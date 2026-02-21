@@ -50,6 +50,10 @@ body {
 #map {
     width: 100%;
     height: 100%;
+}
+
+/* Применяем фильтр только к слою тайлов карты */
+.leaflet-tile-pane {
     filter: grayscale(70%) brightness(0.8) contrast(1.2);
 }
 
