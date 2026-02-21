@@ -1,1 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Интерактивная карта - Полный мониторинг</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <div class="map-container">
+            <div class="scanline"></div>
+            <div id="map"></div>
+        </div>
+        
+        <div class="info-panel">
+            <div class="info-header">
+                <h1>&gt;&gt;&gt; СИСТЕМА МОНИТОРИНГА &lt;&lt;&lt;</h1>
+            </div>
+            
+            <div class="controls">
+                <button class="control-btn" onclick="getCurrentLocation()">[ 📍 МОЯ ГЕОПОЗИЦИЯ ]</button>
+                <button class="control-btn" onclick="clearMarkers()">[ ✖ ОЧИСТИТЬ ВСЕ ]</button>
+            </div>
+            
+            <div class="info-content" id="infoContent">
+                <div class="no-selection">
+                    ▼ КЛИКНИТЕ НА КАРТУ ▼<br><br>
+                    [ ОЖИДАНИЕ КООРДИНАТ... ]<br><br>
+                    Система готова к сканированию<br>
+                    любой точки на карте
+                </div>
+            </div>
+            
+            <div class="timestamp" id="timestamp"></div>
+        </div>
+    </div>
 
+    <!-- Модальное окно -->
+    <div class="modal-overlay" id="modalOverlay" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+                <div class="modal-title" id="modalTitle">&gt;&gt;&gt; ДЕТАЛЬНАЯ ИНФОРМАЦИЯ &lt;&lt;&lt;</div>
+                <div class="modal-subtitle" id="modalSubtitle">Полные данные сканирования</div>
+            </div>
+            <div class="modal-body" id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
