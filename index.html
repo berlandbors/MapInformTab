@@ -19,6 +19,11 @@
                 <h1>&gt;&gt;&gt; СИСТЕМА МОНИТОРИНГА &lt;&lt;&lt;</h1>
             </div>
             
+            <div class="search-container">
+                <input type="text" id="searchInput" class="search-input" placeholder="[ ПОИСК НАСЕЛЁННЫХ ПУНКТОВ ]">
+                <div class="search-results" id="searchResults"></div>
+            </div>
+
             <div class="controls">
                 <button class="control-btn" onclick="getCurrentLocation()">[ 📍 МОЯ ГЕОПОЗИЦИЯ ]</button>
                 <button class="control-btn" onclick="clearMarkers()">[ ✖ ОЧИСТИТЬ ВСЕ ]</button>
@@ -50,6 +55,7 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

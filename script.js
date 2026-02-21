@@ -1,6 +1,7 @@
 let map;
 let markers = [];
 let markerCount = 0;
+let searchTimeout = null;
 
 // Определение мобильного устройства
 const isMobile = window.matchMedia("(max-width: 768px)").matches;
@@ -28,16 +29,23 @@ async function scanLocation(lat, lng) {
     showLoading();
 
     try {
-        const [weatherData, locationData, roadData] = await Promise.all([
+        const [weatherData, locationData, roadData, seismicData, astronomyData] = await Promise.all([
             getWeatherData(lat, lng),
             getLocationData(lat, lng),
-            getRoadData(lat, lng)
+            getRoadData(lat, lng),
+            getSeismicData(lat, lng),
+            getAstronomyData(lat, lng)
         ]);
+
+        const alertsData = getWeatherAlerts(weatherData.weatherCode, weatherData.precipProbability);
 
         const fullData = {
             ...weatherData,
             ...locationData,
             ...roadData,
+            ...seismicData,
+            ...astronomyData,
+            ...alertsData,
             id: markerCount,
             scanTime: new Date().toLocaleString('ru-RU')
         };
@@ -143,6 +151,19 @@ function createPopupContent(data) {
                 <span class="popup-label">Давление:</span>
                 <span class="popup-value">${data.pressure} гПа</span>
             </div>
+            <div class="popup-row">
+                <span class="popup-label">🌧️ Осадки:</span>
+                <span class="popup-value">${data.precipitation} мм (${data.precipType})</span>
+            </div>
+            <div class="popup-row">
+                <span class="popup-label">Вероятность:</span>
+                <span class="popup-value">${data.precipProbability ?? 0}%</span>
+            </div>
+            ${data.weatherAlerts && data.weatherAlerts.length > 0 ? `
+            <div class="popup-row">
+                <span class="popup-label">⚠️ Предупреждение:</span>
+                <span class="popup-value alert-${data.weatherAlerts[0].level}">${data.weatherAlerts[0].type}</span>
+            </div>` : ''}
         </div>
 
         <div class="popup-section">
@@ -339,6 +360,108 @@ function openModal(data) {
                 <span class="modal-value">${data.scanTime}</span>
             </div>
         </div>
+
+        <div class="modal-section">
+            <div class="modal-section-title">🌦️ ОСАДКИ И ПРЕДУПРЕЖДЕНИЯ</div>
+            <div class="modal-row">
+                <span class="modal-label">Осадки за час:</span>
+                <span class="modal-value">${data.precipitation} мм</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Тип осадков:</span>
+                <span class="modal-value">${data.precipType || 'Нет'}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Вероятность осадков:</span>
+                <span class="modal-value">${data.precipProbability ?? 0}%</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Часов осадков (сут.):</span>
+                <span class="modal-value">${data.precipHours ?? 0} ч</span>
+            </div>
+            ${data.weatherAlerts && data.weatherAlerts.length > 0 ?
+                data.weatherAlerts.map(a => `
+                <div class="modal-row">
+                    <span class="modal-label">${a.icon} ${a.type}:</span>
+                    <span class="modal-value alert-${a.level}">${a.description}</span>
+                </div>`).join('') :
+                `<div class="modal-row">
+                    <span class="modal-label">Предупреждения:</span>
+                    <span class="modal-value">Нет активных</span>
+                </div>`
+            }
+        </div>
+
+        ${data.seismicEvents && data.seismicEvents.length > 0 ? `
+        <div class="modal-section">
+            <div class="modal-section-title">🌍 СЕЙСМИЧЕСКАЯ АКТИВНОСТЬ (500 км)</div>
+            <table style="width:100%; border-collapse: collapse; font-size: 11px;">
+                <tr style="color: #00aa00; border-bottom: 1px solid #004400;">
+                    <th style="text-align:left; padding: 4px;">Магнитуда</th>
+                    <th style="text-align:left; padding: 4px;">Место</th>
+                    <th style="text-align:left; padding: 4px;">Глубина</th>
+                    <th style="text-align:left; padding: 4px;">Время</th>
+                </tr>
+                ${data.seismicEvents.map(e => `
+                <tr style="border-bottom: 1px dotted #002200;">
+                    <td style="padding: 4px;"><span class="magnitude-indicator">M${e.magnitude}</span></td>
+                    <td style="padding: 4px; color: #00ff00;">${e.place}</td>
+                    <td style="padding: 4px; color: #00ff00;">${e.depth} км</td>
+                    <td style="padding: 4px; color: #00ff00;">${e.time}</td>
+                </tr>`).join('')}
+            </table>
+        </div>` : `
+        <div class="modal-section">
+            <div class="modal-section-title">🌍 СЕЙСМИЧЕСКАЯ АКТИВНОСТЬ (500 км)</div>
+            <div class="modal-row">
+                <span class="modal-label">Данные:</span>
+                <span class="modal-value">Нет сейсмических событий</span>
+            </div>
+        </div>`}
+
+        <div class="modal-section">
+            <div class="modal-section-title">🕐 ВРЕМЯ И АСТРОНОМИЯ</div>
+            <div class="modal-row">
+                <span class="modal-label">Часовой пояс:</span>
+                <span class="modal-value">${data.timezone || 'Н/Д'}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Смещение UTC:</span>
+                <span class="modal-value">UTC${data.utcOffsetSeconds >= 0 ? '+' : ''}${Math.round((data.utcOffsetSeconds || 0) / 3600)}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">🌅 Восход солнца:</span>
+                <span class="modal-value">${data.sunriseTime || 'Н/Д'}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">🌇 Закат солнца:</span>
+                <span class="modal-value">${data.sunsetTime || 'Н/Д'}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Продолжительность дня:</span>
+                <span class="modal-value">${data.dayLength || 'Н/Д'}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Фаза дня:</span>
+                <span class="modal-value">${data.dayPhase || 'Н/Д'}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">🌙 Восход луны:</span>
+                <span class="modal-value">${data.moonriseTime || 'Н/Д'}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">🌙 Закат луны:</span>
+                <span class="modal-value">${data.moonsetTime || 'Н/Д'}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Фаза луны:</span>
+                <span class="modal-value">${data.moonPhase || 'Н/Д'}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Освещённость луны:</span>
+                <span class="modal-value">${data.moonIllumination ?? 0}%</span>
+            </div>
+        </div>
     `;
 
     overlay.classList.add('active');
@@ -365,7 +488,7 @@ function openModalById(index) {
 // Получение данных о погоде через Open-Meteo API
 async function getWeatherData(lat, lng) {
     try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,visibility,uv_index,precipitation,cloud_cover&wind_speed_unit=ms`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,visibility,uv_index,precipitation,cloud_cover&daily=precipitation_probability_max,precipitation_hours&timezone=auto&wind_speed_unit=ms&forecast_days=1`;
         const response = await fetch(url);
         const data = await response.json();
         const current = data.current;
@@ -384,6 +507,11 @@ async function getWeatherData(lat, lng) {
             weatherCode: current.weather_code,
             condition: getWeatherCondition(current.weather_code),
             elevation: Math.round(data.elevation || 0),
+            timezone: data.timezone || 'UTC',
+            utcOffsetSeconds: data.utc_offset_seconds || 0,
+            precipProbability: data.daily?.precipitation_probability_max?.[0] ?? 0,
+            precipHours: data.daily?.precipitation_hours?.[0] ?? 0,
+            precipType: getPrecipitationType(current.weather_code),
             latitude: Math.round(lat * 10000) / 10000,
             longitude: Math.round(lng * 10000) / 10000
         };
@@ -395,6 +523,8 @@ async function getWeatherData(lat, lng) {
             visibility: 'Н/Д', uvIndex: 'Н/Д', precipitation: 'Н/Д',
             cloudCover: 'Н/Д', weatherCode: 0, condition: 'Недоступно',
             elevation: 'Н/Д',
+            timezone: 'Н/Д', utcOffsetSeconds: 0,
+            precipProbability: 0, precipHours: 0, precipType: 'Нет',
             latitude: Math.round(lat * 10000) / 10000,
             longitude: Math.round(lng * 10000) / 10000
         };
@@ -590,6 +720,203 @@ function getSurfaceName(surface) {
     return surfaces[surface] || surface || 'Н/Д';
 }
 
+// Поиск населённых пунктов
+function escapeHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+async function searchLocation(query) {
+    if (!query || query.length < 2) {
+        clearSearchResults();
+        return;
+    }
+    try {
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5`;
+        const response = await fetch(url, { headers: { 'Accept-Language': 'ru', 'User-Agent': 'MapInformTab/1.0' } });
+        const results = await response.json();
+        displaySearchResults(results);
+    } catch (error) {
+        console.error('Ошибка поиска:', error);
+        clearSearchResults();
+    }
+}
+
+function displaySearchResults(results) {
+    const container = document.getElementById('searchResults');
+    if (!results || results.length === 0) {
+        container.innerHTML = '<div class="search-result-item">Ничего не найдено</div>';
+        container.style.display = 'block';
+        return;
+    }
+    container.innerHTML = results.map(r => {
+        const safe = escapeHtml(r.display_name);
+        return `<div class="search-result-item" onclick="selectSearchResult(${parseFloat(r.lat)}, ${parseFloat(r.lon)}, this)"
+            data-name="${safe}">
+            ${safe}
+        </div>`;
+    }).join('');
+    container.style.display = 'block';
+}
+
+function clearSearchResults() {
+    const container = document.getElementById('searchResults');
+    if (container) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+    }
+}
+
+async function selectSearchResult(lat, lng, el) {
+    const name = el.getAttribute('data-name');
+    clearSearchResults();
+    document.getElementById('searchInput').value = name;
+    map.setView([lat, lng], 14);
+    await scanLocation(lat, lng);
+}
+
+// Инициализация поиска
+function initSearch() {
+    const searchInput = document.getElementById('searchInput');
+    if (!searchInput) return;
+
+    searchInput.addEventListener('input', function() {
+        const query = this.value.trim();
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => searchLocation(query), 500);
+    });
+
+    searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            clearSearchResults();
+            this.value = '';
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.search-container')) {
+            clearSearchResults();
+        }
+    });
+}
+
+// Сейсмические данные через USGS API
+async function getSeismicData(lat, lng) {
+    try {
+        const url = `https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&latitude=${lat}&longitude=${lng}&maxradiuskm=500&limit=5&orderby=time`;
+        const response = await fetch(url);
+        const data = await response.json();
+        const events = (data.features || []).map(f => ({
+            magnitude: f.properties.mag !== null ? f.properties.mag.toFixed(1) : '?',
+            depth: f.geometry.coordinates[2] !== null ? Math.round(f.geometry.coordinates[2]) : '?',
+            place: f.properties.place || 'Нет данных',
+            time: new Date(f.properties.time).toLocaleString('ru-RU')
+        }));
+        return { seismicEvents: events };
+    } catch (error) {
+        console.error('Ошибка получения сейсмических данных:', error);
+        return { seismicEvents: [] };
+    }
+}
+
+// Астрономические данные через SunCalc.js
+function getAstronomyData(lat, lng) {
+    try {
+        const now = new Date();
+        const sunTimes = SunCalc.getTimes(now, lat, lng);
+        const moonTimes = SunCalc.getMoonTimes(now, lat, lng);
+        const moonIllum = SunCalc.getMoonIllumination(now);
+
+        const sunrise = sunTimes.sunrise;
+        const sunset = sunTimes.sunset;
+        const validSun = sunrise instanceof Date && !isNaN(sunrise) && sunset instanceof Date && !isNaN(sunset);
+        const dayLengthMin = validSun ? (sunset - sunrise) / 60000 : 0;
+
+        return Promise.resolve({
+            sunriseTime: validSun ? sunrise.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'Н/Д',
+            sunsetTime: validSun ? sunset.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'Н/Д',
+            dayLength: validSun ? `${Math.floor(dayLengthMin / 60)}ч ${Math.round(dayLengthMin % 60)}м` : 'Н/Д',
+            dayPhase: getDayPhase(now, sunTimes),
+            moonriseTime: moonTimes.rise instanceof Date ? moonTimes.rise.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'Н/Д',
+            moonsetTime: moonTimes.set instanceof Date ? moonTimes.set.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'Н/Д',
+            moonPhase: getMoonPhaseName(moonIllum.phase),
+            moonIllumination: Math.round(moonIllum.fraction * 100)
+        });
+    } catch (error) {
+        console.error('Ошибка астрономических данных:', error);
+        return Promise.resolve({
+            sunriseTime: 'Н/Д', sunsetTime: 'Н/Д', dayLength: 'Н/Д',
+            dayPhase: 'Н/Д', moonriseTime: 'Н/Д', moonsetTime: 'Н/Д',
+            moonPhase: 'Н/Д', moonIllumination: 0
+        });
+    }
+}
+
+// Предупреждения на основе кода погоды
+function getWeatherAlerts(weatherCode, precipProbability) {
+    const alerts = [];
+    if (weatherCode >= 95) {
+        alerts.push({ type: 'Гроза', level: 'danger', icon: '⛈️', description: 'Опасная гроза с возможным градом' });
+    } else if (weatherCode >= 80) {
+        alerts.push({ type: 'Ливень', level: 'warning', icon: '🌧️', description: 'Сильные ливневые осадки' });
+    } else if (weatherCode >= 75) {
+        alerts.push({ type: 'Снегопад', level: 'warning', icon: '🌨️', description: 'Интенсивный снегопад' });
+    } else if (weatherCode >= 65) {
+        alerts.push({ type: 'Сильный дождь', level: 'warning', icon: '🌧️', description: 'Интенсивные осадки' });
+    } else if (weatherCode === 45 || weatherCode === 48) {
+        alerts.push({ type: 'Густой туман', level: 'info', icon: '🌫️', description: 'Ограниченная видимость' });
+    }
+    if (precipProbability >= 80 && alerts.length === 0) {
+        alerts.push({ type: 'Высокая вероятность осадков', level: 'info', icon: '💧', description: `Вероятность осадков: ${precipProbability}%` });
+    }
+    return { weatherAlerts: alerts };
+}
+
+// Тип осадков по коду погоды
+function getPrecipitationType(weatherCode) {
+    if (weatherCode >= 71 && weatherCode <= 77) return 'Снег';
+    if (weatherCode >= 85 && weatherCode <= 86) return 'Снег';
+    if (weatherCode >= 51 && weatherCode <= 55) return 'Морось';
+    if (weatherCode >= 61 && weatherCode <= 67) return 'Дождь';
+    if (weatherCode >= 80 && weatherCode <= 82) return 'Ливень';
+    if (weatherCode >= 95) return 'Гроза';
+    return 'Нет';
+}
+
+// Фаза дня
+function getDayPhase(now, sunTimes) {
+    const t = now.getTime();
+    const dawn = sunTimes.dawn instanceof Date ? sunTimes.dawn.getTime() : null;
+    const sunrise = sunTimes.sunrise instanceof Date ? sunTimes.sunrise.getTime() : null;
+    const solarNoon = sunTimes.solarNoon instanceof Date ? sunTimes.solarNoon.getTime() : null;
+    const sunset = sunTimes.sunset instanceof Date ? sunTimes.sunset.getTime() : null;
+    const dusk = sunTimes.dusk instanceof Date ? sunTimes.dusk.getTime() : null;
+
+    if (!sunrise || !sunset) return 'Н/Д';
+    if (dawn && t < dawn) return '🌃 Ночь';
+    if (t < sunrise) return '🌅 Рассвет';
+    if (solarNoon && t < solarNoon) return '☀️ Утро';
+    if (t < sunset) return '🌞 День';
+    if (dusk && t < dusk) return '🌆 Сумерки';
+    return '🌃 Ночь';
+}
+
+// Название фазы луны
+function getMoonPhaseName(phase) {
+    if (phase < 0.025 || phase >= 0.975) return '🌑 Новолуние';
+    if (phase < 0.25) return '🌒 Растущий серп';
+    if (phase < 0.275) return '🌓 Первая четверть';
+    if (phase < 0.5) return '🌔 Растущая луна';
+    if (phase < 0.525) return '🌕 Полнолуние';
+    if (phase < 0.75) return '🌖 Убывающая луна';
+    if (phase < 0.775) return '🌗 Последняя четверть';
+    return '🌘 Убывающий серп';
+}
+
 // Отображение полных данных в боковой панели
 function displayFullInfo(data) {
     const content = document.getElementById('infoContent');
@@ -670,6 +997,89 @@ function displayFullInfo(data) {
                 <span class="info-value">${data.maxSpeed} км/ч</span>
             </div>
             ` : ''}
+        </div>
+
+        <div class="info-section">
+            <div class="section-title">🌦️ ОСАДКИ И ПРЕДУПРЕЖДЕНИЯ</div>
+            <div class="info-row">
+                <span class="info-label">Осадки:</span>
+                <span class="info-value">${data.precipitation} мм (${data.precipType})</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Вероятность осадков:</span>
+                <span class="info-value">${data.precipProbability ?? 0}%</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Часов осадков:</span>
+                <span class="info-value">${data.precipHours ?? 0} ч</span>
+            </div>
+            ${data.weatherAlerts && data.weatherAlerts.length > 0 ?
+                data.weatherAlerts.map(a => `
+                <div class="info-row">
+                    <span class="info-label">${a.icon} ${a.type}:</span>
+                    <span class="info-value alert-${a.level}">${a.description}</span>
+                </div>`).join('') :
+                `<div class="info-row">
+                    <span class="info-label">Предупреждения:</span>
+                    <span class="info-value">Нет активных</span>
+                </div>`
+            }
+        </div>
+
+        ${data.seismicEvents && data.seismicEvents.length > 0 ? `
+        <div class="info-section">
+            <div class="section-title">🌍 СЕЙСМИКА (500 км)</div>
+            ${data.seismicEvents.slice(0, 3).map(e => `
+            <div class="seismic-event">
+                <div class="info-row">
+                    <span class="info-label">Магнитуда:</span>
+                    <span class="info-value"><span class="magnitude-indicator">M${e.magnitude}</span></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Место:</span>
+                    <span class="info-value">${e.place}</span>
+                </div>
+            </div>`).join('')}
+        </div>` : ''}
+
+        <div class="info-section">
+            <div class="section-title">🕐 ВРЕМЯ И АСТРОНОМИЯ</div>
+            <div class="info-row">
+                <span class="info-label">Часовой пояс:</span>
+                <span class="info-value">${data.timezone || 'Н/Д'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">🌅 Восход солнца:</span>
+                <span class="info-value">${data.sunriseTime || 'Н/Д'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">🌇 Закат солнца:</span>
+                <span class="info-value">${data.sunsetTime || 'Н/Д'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Световой день:</span>
+                <span class="info-value">${data.dayLength || 'Н/Д'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Фаза дня:</span>
+                <span class="info-value">${data.dayPhase || 'Н/Д'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">🌙 Восход луны:</span>
+                <span class="info-value">${data.moonriseTime || 'Н/Д'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">🌙 Закат луны:</span>
+                <span class="info-value">${data.moonsetTime || 'Н/Д'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Фаза луны:</span>
+                <span class="info-value">${data.moonPhase || 'Н/Д'}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Освещённость луны:</span>
+                <span class="info-value">${data.moonIllumination ?? 0}%</span>
+            </div>
         </div>
 
         <button class="view-details-btn" onclick="openModalById(${markerIndex})">
@@ -764,5 +1174,6 @@ document.addEventListener('keydown', function(e) {
 
 // Инициализация приложения
 initMap();
+initSearch();
 updateTimestamp();
 setInterval(updateTimestamp, 1000);

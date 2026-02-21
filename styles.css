@@ -682,3 +682,84 @@ body {
     .container { padding: 5px; gap: 5px; }
     .info-header { padding: 15px 10px 5px; }
 }
+
+/* Поиск */
+.search-container {
+    padding: 10px 20px;
+    border-bottom: 1px solid #004400;
+    position: relative;
+}
+
+.search-input {
+    width: 100%;
+    padding: 8px 10px;
+    background: rgba(0, 255, 0, 0.05);
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    outline: none;
+    transition: all 0.3s;
+}
+
+.search-input::placeholder {
+    color: #005500;
+    font-size: 9px;
+}
+
+.search-input:focus {
+    background: rgba(0, 255, 0, 0.1);
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.search-results {
+    display: none;
+    position: absolute;
+    left: 20px;
+    right: 20px;
+    background: rgba(0, 10, 0, 0.98);
+    border: 1px solid #00ff00;
+    border-top: none;
+    z-index: 1000;
+    max-height: 200px;
+    overflow-y: auto;
+    animation: fadeIn 0.2s ease-in-out;
+}
+
+.search-result-item {
+    padding: 8px 10px;
+    font-size: 10px;
+    color: #00aa00;
+    cursor: pointer;
+    border-bottom: 1px dotted #003300;
+    transition: background 0.2s;
+    line-height: 1.4;
+}
+
+.search-result-item:last-child {
+    border-bottom: none;
+}
+
+.search-result-item:hover {
+    background: rgba(0, 255, 0, 0.1);
+    color: #00ff00;
+}
+
+/* Предупреждения */
+.alert-warning { color: #ffaa00; text-shadow: 0 0 5px rgba(255, 170, 0, 0.5); }
+.alert-danger { color: #ff4444; text-shadow: 0 0 5px rgba(255, 0, 0, 0.5); }
+.alert-info { color: #00aaff; text-shadow: 0 0 5px rgba(0, 170, 255, 0.5); }
+
+/* Сейсмика */
+.seismic-event {
+    padding: 6px 8px;
+    margin-bottom: 6px;
+    border-left: 3px solid #ffaa00;
+    background: rgba(255, 170, 0, 0.05);
+}
+
+.magnitude-indicator {
+    font-weight: bold;
+    color: #ffaa00;
+    text-shadow: 0 0 5px rgba(255, 170, 0, 0.8);
+}
