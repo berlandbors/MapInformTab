@@ -29,14 +29,14 @@ async function scanLocation(lat, lng) {
     showLoading();
 
     try {
-        const [weatherData, locationData, roadData, seismicData, astronomyData] = await Promise.all([
+        const [weatherData, locationData, roadData, seismicData] = await Promise.all([
             getWeatherData(lat, lng),
             getLocationData(lat, lng),
             getRoadData(lat, lng),
-            getSeismicData(lat, lng),
-            getAstronomyData(lat, lng)
+            getSeismicData(lat, lng)
         ]);
 
+        const astronomyData = getAstronomyData(lat, lng, weatherData.timezone);
         const alertsData = getWeatherAlerts(weatherData.weatherCode, weatherData.precipProbability);
 
         const fullData = {
@@ -772,9 +772,12 @@ function clearSearchResults() {
 }
 
 async function selectSearchResult(lat, lng, el) {
-    const name = el.getAttribute('data-name');
+    const escapedName = el.getAttribute('data-name');
     clearSearchResults();
-    document.getElementById('searchInput').value = name;
+    // Decode HTML entities for display in the input field
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = escapedName;
+    document.getElementById('searchInput').value = tempDiv.textContent;
     map.setView([lat, lng], 14);
     await scanLocation(lat, lng);
 }
@@ -811,9 +814,9 @@ async function getSeismicData(lat, lng) {
         const response = await fetch(url);
         const data = await response.json();
         const events = (data.features || []).map(f => ({
-            magnitude: f.properties.mag !== null ? f.properties.mag.toFixed(1) : '?',
-            depth: f.geometry.coordinates[2] !== null ? Math.round(f.geometry.coordinates[2]) : '?',
-            place: f.properties.place || 'Нет данных',
+            magnitude: (f.properties.mag != null) ? f.properties.mag.toFixed(1) : '?',
+            depth: (f.geometry.coordinates[2] != null) ? Math.round(f.geometry.coordinates[2]) : '?',
+            place: escapeHtml(f.properties.place || 'Нет данных'),
             time: new Date(f.properties.time).toLocaleString('ru-RU')
         }));
         return { seismicEvents: events };
@@ -824,7 +827,7 @@ async function getSeismicData(lat, lng) {
 }
 
 // Астрономические данные через SunCalc.js
-function getAstronomyData(lat, lng) {
+function getAstronomyData(lat, lng, timezone) {
     try {
         const now = new Date();
         const sunTimes = SunCalc.getTimes(now, lat, lng);
@@ -836,23 +839,31 @@ function getAstronomyData(lat, lng) {
         const validSun = sunrise instanceof Date && !isNaN(sunrise) && sunset instanceof Date && !isNaN(sunset);
         const dayLengthMin = validSun ? (sunset - sunrise) / 60000 : 0;
 
-        return Promise.resolve({
-            sunriseTime: validSun ? sunrise.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'Н/Д',
-            sunsetTime: validSun ? sunset.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'Н/Д',
+        const tzOptions = timezone && timezone !== 'Н/Д'
+            ? { timeZone: timezone, hour: '2-digit', minute: '2-digit' }
+            : { hour: '2-digit', minute: '2-digit' };
+
+        const fmtTime = d => (d instanceof Date && !isNaN(d))
+            ? d.toLocaleTimeString('ru-RU', tzOptions)
+            : 'Н/Д';
+
+        return {
+            sunriseTime: validSun ? fmtTime(sunrise) : 'Н/Д',
+            sunsetTime: validSun ? fmtTime(sunset) : 'Н/Д',
             dayLength: validSun ? `${Math.floor(dayLengthMin / 60)}ч ${Math.round(dayLengthMin % 60)}м` : 'Н/Д',
             dayPhase: getDayPhase(now, sunTimes),
-            moonriseTime: moonTimes.rise instanceof Date ? moonTimes.rise.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'Н/Д',
-            moonsetTime: moonTimes.set instanceof Date ? moonTimes.set.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : 'Н/Д',
+            moonriseTime: fmtTime(moonTimes.rise),
+            moonsetTime: fmtTime(moonTimes.set),
             moonPhase: getMoonPhaseName(moonIllum.phase),
             moonIllumination: Math.round(moonIllum.fraction * 100)
-        });
+        };
     } catch (error) {
         console.error('Ошибка астрономических данных:', error);
-        return Promise.resolve({
+        return {
             sunriseTime: 'Н/Д', sunsetTime: 'Н/Д', dayLength: 'Н/Д',
             dayPhase: 'Н/Д', moonriseTime: 'Н/Д', moonsetTime: 'Н/Д',
             moonPhase: 'Н/Д', moonIllumination: 0
-        });
+        };
     }
 }
 
@@ -870,7 +881,7 @@ function getWeatherAlerts(weatherCode, precipProbability) {
     } else if (weatherCode === 45 || weatherCode === 48) {
         alerts.push({ type: 'Густой туман', level: 'info', icon: '🌫️', description: 'Ограниченная видимость' });
     }
-    if (precipProbability >= 80 && alerts.length === 0) {
+    if (typeof precipProbability === 'number' && precipProbability >= 80 && alerts.length === 0) {
         alerts.push({ type: 'Высокая вероятность осадков', level: 'info', icon: '💧', description: `Вероятность осадков: ${precipProbability}%` });
     }
     return { weatherAlerts: alerts };
