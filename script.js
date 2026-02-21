@@ -2,9 +2,13 @@ let map;
 let markers = [];
 let markerCount = 0;
 
+// Определение мобильного устройства
+const isMobile = window.matchMedia("(max-width: 768px)").matches;
+
 // Инициализация карты
 function initMap() {
-    map = L.map('map').setView([55.7558, 37.6173], 12);
+    const initialZoom = isMobile ? 11 : 12;
+    map = L.map('map', { tap: true }).setView([55.7558, 37.6173], initialZoom);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors',
@@ -65,7 +69,7 @@ function createMarker(lat, lng, data) {
     const popupContent = createPopupContent(data);
     marker.bindPopup(popupContent, {
         maxWidth: 400,
-        minWidth: 350,
+        minWidth: isMobile ? 280 : 350,
         closeButton: true,
         autoClose: false,
         autoPan: true,
@@ -338,12 +342,16 @@ function openModal(data) {
     `;
 
     overlay.classList.add('active');
+    if (isMobile) {
+        document.body.style.overflow = 'hidden';
+    }
 }
 
 // Закрытие модального окна
 function closeModal(event) {
     if (!event || event.target === document.getElementById('modalOverlay')) {
         document.getElementById('modalOverlay').classList.remove('active');
+        document.body.style.overflow = '';
     }
 }
 
