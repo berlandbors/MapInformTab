@@ -995,27 +995,67 @@ async function getTimezoneData(lat, lng) {
             second: '2-digit'
         });
 
-        // Вычисляем актуальный UTC offset с учетом DST
-        const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
-        const tzDate = new Date(now.toLocaleString('en-US', { timeZone: timezoneName }));
-        const offsetTotalMinutes = Math.round((tzDate - utcDate) / (1000 * 60));
-        const offsetHours = Math.trunc(offsetTotalMinutes / 60);
-        const offsetMinutes = Math.abs(offsetTotalMinutes % 60);
+        // Надёжный метод: используем formatToParts для получения компонентов времени
+        function getTimePartsForTZ(date, tz) {
+            try {
+                const fmt = new Intl.DateTimeFormat('en-GB', {
+                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    hour12: false, timeZone: tz
+                });
+                const parts = fmt.formatToParts(date);
+                const h = Number(parts.find(p => p.type === 'hour').value);
+                const m = Number(parts.find(p => p.type === 'minute').value);
+                return { h, m };
+            } catch (e) {
+                return null;
+            }
+        }
 
-        const utcOffset = `${offsetHours >= 0 ? '+' : '-'}${String(Math.abs(offsetHours)).padStart(2, '0')}:${String(offsetMinutes).padStart(2, '0')}`;
+        // Вычисляем offset через разницу в минутах между UTC и целевым поясом
+        const utcParts = getTimePartsForTZ(now, 'UTC');
+        const tzParts = getTimePartsForTZ(now, timezoneName);
 
-        // Определяем статус DST: сравниваем текущий offset со стандартным offset
-        // Используем январь и июль, берём меньший offset как стандартный (без DST)
-        // Это корректно работает как для северного, так и для южного полушария
-        const janDate = new Date(now.getFullYear(), 0, 1);
-        const julDate = new Date(now.getFullYear(), 6, 1);
-        const janOffsetMs = new Date(janDate.toLocaleString('en-US', { timeZone: timezoneName })) - new Date(janDate.toLocaleString('en-US', { timeZone: 'UTC' }));
-        const julOffsetMs = new Date(julDate.toLocaleString('en-US', { timeZone: timezoneName })) - new Date(julDate.toLocaleString('en-US', { timeZone: 'UTC' }));
-        const standardOffsetMs = Math.min(janOffsetMs, julOffsetMs);
-        const currentOffsetMs = tzDate - utcDate;
+        if (!tzParts || !utcParts) {
+            throw new Error('Failed to get timezone parts');
+        }
+
+        let offsetMinutes = (tzParts.h * 60 + tzParts.m) - (utcParts.h * 60 + utcParts.m);
+
+        // Нормализация (учитываем переход через полночь)
+        if (offsetMinutes > 12 * 60) offsetMinutes -= 24 * 60;
+        if (offsetMinutes < -12 * 60) offsetMinutes += 24 * 60;
+
+        const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+        const offsetMins = Math.abs(offsetMinutes) % 60;
+        const sign = offsetMinutes >= 0 ? '+' : '-';
+        const utcOffset = `${sign}${String(offsetHours).padStart(2, '0')}:${String(offsetMins).padStart(2, '0')}`;
+
+        // Определяем DST: сравниваем с зимним offset (январь)
+        const janDate = new Date(now.getFullYear(), 0, 15);
+        const janUTCParts = getTimePartsForTZ(janDate, 'UTC');
+        const janTZParts = getTimePartsForTZ(janDate, timezoneName);
+        let janOffset = offsetMinutes;
+        if (janUTCParts && janTZParts) {
+            janOffset = (janTZParts.h * 60 + janTZParts.m) - (janUTCParts.h * 60 + janUTCParts.m);
+            if (janOffset > 12 * 60) janOffset -= 24 * 60;
+            if (janOffset < -12 * 60) janOffset += 24 * 60;
+        }
+
+        // Определяем DST: сравниваем с летним offset (июль)
+        const julDate = new Date(now.getFullYear(), 6, 15);
+        const julUTCParts = getTimePartsForTZ(julDate, 'UTC');
+        const julTZParts = getTimePartsForTZ(julDate, timezoneName);
+        let julOffset = offsetMinutes;
+        if (julUTCParts && julTZParts) {
+            julOffset = (julTZParts.h * 60 + julTZParts.m) - (julUTCParts.h * 60 + julUTCParts.m);
+            if (julOffset > 12 * 60) julOffset -= 24 * 60;
+            if (julOffset < -12 * 60) julOffset += 24 * 60;
+        }
+
+        const standardOffset = Math.min(janOffset, julOffset);
 
         // Если текущее смещение больше стандартного - значит DST активен
-        const isDST = currentOffsetMs > standardOffsetMs;
+        const isDST = offsetMinutes > standardOffset;
 
         const dstStart = data.dstStart ?? data.dstInterval?.dstStart ?? data.dstInterval?.dstNextStart ?? null;
 
