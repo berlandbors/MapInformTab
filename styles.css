@@ -628,7 +628,7 @@ body {
     .info-panel {
         width: 100%;
         height: auto;
-        max-height: 40vh;
+        max-height: 100vh;
         overflow-y: auto;
     }
     .scanline { display: none; }
