@@ -980,18 +980,29 @@ async function getTimezoneData(lat, lng) {
         );
         const data = await response.json();
 
-        let utcOffset = 'Н/Д';
-        if (typeof data.currentUtcOffset === 'string') {
-            utcOffset = data.currentUtcOffset;
-        } else if (data.currentUtcOffset && typeof data.currentUtcOffset === 'object') {
-            const h = data.currentUtcOffset.hours ?? 0;
-            const m = Math.abs(data.currentUtcOffset.minutes ?? 0);
-            utcOffset = `${h >= 0 ? '+' : '-'}${String(Math.abs(h)).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-        }
+        // Используем timezone name для точного определения времени
+        const timezoneName = data.timeZone || 'UTC';
 
-        const localTime = data.currentLocalTime
-            ? new Date(data.currentLocalTime).toLocaleString('ru-RU')
-            : 'Н/Д';
+        // Создаём дату с правильным часовым поясом
+        const now = new Date();
+        const localTime = now.toLocaleString('ru-RU', {
+            timeZone: timezoneName,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+
+        // Вычисляем актуальный UTC offset с учетом DST
+        const utcDate = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+        const tzDate = new Date(now.toLocaleString('en-US', { timeZone: timezoneName }));
+        const offsetTotalMinutes = Math.round((tzDate - utcDate) / (1000 * 60));
+        const offsetHours = Math.trunc(offsetTotalMinutes / 60);
+        const offsetMinutes = Math.abs(offsetTotalMinutes % 60);
+
+        const utcOffset = `${offsetHours >= 0 ? '+' : '-'}${String(Math.abs(offsetHours)).padStart(2, '0')}:${String(offsetMinutes).padStart(2, '0')}`;
 
         const dstStart = data.dstStart ?? data.dstInterval?.dstStart ?? data.dstInterval?.dstNextStart ?? null;
 
