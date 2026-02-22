@@ -109,9 +109,21 @@ function createPopupContent(data) {
 
         <div class="popup-section">
             <div class="popup-section-title">📍 МЕСТОПОЛОЖЕНИЕ</div>
+            ${data.objectName ? `
+            <div class="popup-row">
+                <span class="popup-label">Объект:</span>
+                <span class="popup-value">${escapeHtml(data.objectName)}</span>
+            </div>
+            ` : ''}
+            ${data.objectType ? `
+            <div class="popup-row">
+                <span class="popup-label">Тип объекта:</span>
+                <span class="popup-value">${getObjectTypeName(data.objectType)}</span>
+            </div>
+            ` : ''}
             <div class="popup-row">
                 <span class="popup-label">Улица:</span>
-                <span class="popup-value">${data.road}</span>
+                <span class="popup-value">${data.road}${data.houseNumber ? ', ' + escapeHtml(data.houseNumber) : ''}</span>
             </div>
             <div class="popup-row">
                 <span class="popup-label">Город:</span>
@@ -229,10 +241,28 @@ function openModal(data) {
     body.innerHTML = `
         <div class="modal-section">
             <div class="modal-section-title">📍 МЕСТОПОЛОЖЕНИЕ</div>
+            ${data.objectName ? `
+            <div class="modal-row">
+                <span class="modal-label">Название объекта:</span>
+                <span class="modal-value">${escapeHtml(data.objectName)}</span>
+            </div>
+            ` : ''}
+            ${data.objectType ? `
+            <div class="modal-row">
+                <span class="modal-label">Тип объекта:</span>
+                <span class="modal-value">${getObjectTypeName(data.objectType)}</span>
+            </div>
+            ` : ''}
             <div class="modal-row">
                 <span class="modal-label">Улица/адрес:</span>
-                <span class="modal-value">${data.road}</span>
+                <span class="modal-value">${data.road}${data.houseNumber ? ', д. ' + escapeHtml(data.houseNumber) : ''}</span>
             </div>
+            ${data.houseNumber ? `
+            <div class="modal-row">
+                <span class="modal-label">Номер дома:</span>
+                <span class="modal-value">${escapeHtml(data.houseNumber)}</span>
+            </div>
+            ` : ''}
             <div class="modal-row">
                 <span class="modal-label">Город:</span>
                 <span class="modal-value">${data.city}</span>
@@ -543,23 +573,29 @@ async function getLocationData(lat, lng) {
 
         return {
             road: addr.road || addr.pedestrian || addr.path || addr.footway || 'Нет данных',
+            houseNumber: addr.house_number || null,
             city: addr.city || addr.town || addr.village || addr.hamlet || addr.county || 'Нет данных',
             district: addr.suburb || addr.neighbourhood || addr.district || addr.city_district || 'Нет данных',
             state: addr.state || addr.region || 'Нет данных',
             country: addr.country || 'Нет данных',
             postcode: addr.postcode || null,
-            displayName: data.display_name || 'Нет данных'
+            displayName: data.display_name || 'Нет данных',
+            objectType: data.type || addr.amenity || addr.building || addr.shop || addr.tourism || addr.leisure || null,
+            objectName: addr.name || data.name || null
         };
     } catch (error) {
         console.error('Ошибка получения геолокации:', error);
         return {
             road: 'Ошибка загрузки',
+            houseNumber: null,
             city: 'Ошибка загрузки',
             district: 'Ошибка загрузки',
             state: 'Ошибка загрузки',
             country: 'Ошибка загрузки',
             postcode: null,
-            displayName: 'Ошибка загрузки'
+            displayName: 'Ошибка загрузки',
+            objectType: null,
+            objectName: null
         };
     }
 }
@@ -718,6 +754,76 @@ function getSurfaceName(surface) {
         paving_stones: 'Плитка'
     };
     return surfaces[surface] || surface || 'Н/Д';
+}
+
+// Получение локализованного названия типа объекта
+function getObjectTypeName(type) {
+    const types = {
+        house: 'Дом',
+        residential: 'Жилое здание',
+        apartments: 'Многоквартирный дом',
+        commercial: 'Коммерческое здание',
+        industrial: 'Промышленное здание',
+        retail: 'Торговое здание',
+        office: 'Офисное здание',
+        school: 'Школа',
+        university: 'Университет',
+        hospital: 'Больница',
+        church: 'Церковь',
+        mosque: 'Мечеть',
+        temple: 'Храм',
+        synagogue: 'Синагога',
+        restaurant: 'Ресторан',
+        cafe: 'Кафе',
+        bar: 'Бар',
+        pub: 'Паб',
+        fast_food: 'Фастфуд',
+        pharmacy: 'Аптека',
+        bank: 'Банк',
+        atm: 'Банкомат',
+        parking: 'Парковка',
+        fuel: 'АЗС',
+        police: 'Полиция',
+        fire_station: 'Пожарная станция',
+        post_office: 'Почта',
+        library: 'Библиотека',
+        cinema: 'Кинотеатр',
+        theatre: 'Театр',
+        museum: 'Музей',
+        place_of_worship: 'Место поклонения',
+        supermarket: 'Супермаркет',
+        convenience: 'Продуктовый',
+        clothes: 'Магазин одежды',
+        hairdresser: 'Парикмахерская',
+        bakery: 'Булочная',
+        butcher: 'Мясная лавка',
+        shop: 'Магазин',
+        hotel: 'Отель',
+        motel: 'Мотель',
+        hostel: 'Хостел',
+        attraction: 'Достопримечательность',
+        viewpoint: 'Смотровая площадка',
+        park: 'Парк',
+        playground: 'Детская площадка',
+        sports_centre: 'Спортивный центр',
+        stadium: 'Стадион',
+        swimming_pool: 'Бассейн',
+        bus_stop: 'Автобусная остановка',
+        railway: 'Железная дорога',
+        station: 'Станция',
+        airport: 'Аэропорт',
+        bicycle_parking: 'Велопарковка',
+        water: 'Водоём',
+        forest: 'Лес',
+        meadow: 'Луг',
+        farmland: 'Сельскохозяйственные угодья',
+        pedestrian: 'Пешеходная зона',
+        footway: 'Пешеходная дорожка',
+        administrative: 'Административная граница',
+        boundary: 'Граница',
+        yes: 'Объект'
+    };
+    return types[type] || escapeHtml(type.charAt(0).toUpperCase() + type.slice(1).replace(/_/g, ' '));
 }
 
 // Поиск населённых пунктов
@@ -939,9 +1045,21 @@ function displayFullInfo(data) {
     content.innerHTML = `
         <div class="info-section">
             <div class="section-title">📍 ТОЧКА #${data.id}</div>
+            ${data.objectName ? `
+            <div class="info-row">
+                <span class="info-label">Объект:</span>
+                <span class="info-value">${escapeHtml(data.objectName)}</span>
+            </div>
+            ` : ''}
+            ${data.objectType ? `
+            <div class="info-row">
+                <span class="info-label">Тип:</span>
+                <span class="info-value">${getObjectTypeName(data.objectType)}</span>
+            </div>
+            ` : ''}
             <div class="info-row">
                 <span class="info-label">Адрес:</span>
-                <span class="info-value">${data.road}</span>
+                <span class="info-value">${data.road}${data.houseNumber ? ', ' + escapeHtml(data.houseNumber) : ''}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Город:</span>
