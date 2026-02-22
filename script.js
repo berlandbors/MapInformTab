@@ -224,7 +224,7 @@ function createPopupContent(data) {
             <div class="popup-section-title">🕐 ВРЕМЯ</div>
             <div class="popup-row">
                 <span class="popup-label">Местное время:</span>
-                <span class="popup-value">${data.localTime || 'Н/Д'}</span>
+                <span class="popup-value">${data.timezone ? getCurrentTimeForTimezone(data.timezone) : data.localTime || 'Н/Д'}</span>
             </div>
             <div class="popup-row">
                 <span class="popup-label">Часовой пояс:</span>
@@ -475,7 +475,7 @@ function openModal(data) {
             <div class="modal-section-title">🕐 ВРЕМЯ И ЧАСОВОЙ ПОЯС</div>
             <div class="modal-row">
                 <span class="modal-label">Местное время:</span>
-                <span class="modal-value">${data.localTime || 'Н/Д'}</span>
+                <span class="modal-value">${data.timezone ? getCurrentTimeForTimezone(data.timezone) : data.localTime || 'Н/Д'}</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">Часовой пояс:</span>
@@ -982,16 +982,6 @@ async function getTimezoneData(lat, lng) {
 
         const timezoneName = data.timeZone || 'UTC';
         const now = new Date();
-        
-        const localTime = now.toLocaleString('ru-RU', {
-            timeZone: timezoneName,
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-        });
 
         // Надёжный метод: используем formatToParts
         function getTimePartsForTZ(date, tz) {
@@ -1057,7 +1047,7 @@ async function getTimezoneData(lat, lng) {
         const dstStart = data.dstStart ?? data.dstInterval?.dstStart ?? data.dstInterval?.dstNextStart ?? null;
 
         return {
-            localTime,
+            timezone: timezoneName,
             utcOffset,
             isDST,
             dstStart
@@ -1065,11 +1055,116 @@ async function getTimezoneData(lat, lng) {
     } catch (error) {
         console.error('Ошибка получения данных о часовом поясе:', error);
         return {
-            localTime: 'Н/Д',
+            timezone: 'Н/Д',
             utcOffset: 'Н/Д',
             isDST: false,
             dstStart: null
         };
+    }
+}
+
+function getCurrentTimeForTimezone(timezone) {
+    if (!timezone || timezone === 'Н/Д') {
+        return new Date().toLocaleString('ru-RU', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+    try {
+        return new Date().toLocaleString('ru-RU', {
+            timeZone: timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    } catch (e) {
+        return 'Н/Д';
+    }
+}
+
+function updateVisibleTimeDisplay() {
+    const lastMarkerData = markers.length > 0 ? markers[markers.length - 1].data : null;
+
+    if (lastMarkerData && lastMarkerData.timezone) {
+        const currentTime = getCurrentTimeForTimezone(lastMarkerData.timezone);
+        document.querySelectorAll('.info-row').forEach(row => {
+            const label = row.querySelector('.info-label');
+            if (label && label.textContent.includes('Местное:')) {
+                const valueSpan = row.querySelector('.info-value');
+                if (valueSpan) {
+                    valueSpan.textContent = currentTime;
+                }
+            }
+        });
+    }
+
+    const openPopup = document.querySelector('.leaflet-popup');
+    if (openPopup) {
+        let popupTimezone = null;
+        openPopup.querySelectorAll('.popup-row').forEach(row => {
+            const label = row.querySelector('.popup-label');
+            if (label && label.textContent.includes('Часовой пояс:')) {
+                const valueSpan = row.querySelector('.popup-value');
+                if (valueSpan) popupTimezone = valueSpan.textContent;
+            }
+        });
+        if (popupTimezone) {
+            openPopup.querySelectorAll('.popup-row').forEach(row => {
+                const label = row.querySelector('.popup-label');
+                if (label && label.textContent.includes('Местное время:')) {
+                    const valueSpan = row.querySelector('.popup-value');
+                    if (valueSpan) {
+                        valueSpan.textContent = getCurrentTimeForTimezone(popupTimezone);
+                    }
+                }
+            });
+        }
+    }
+
+    const modalOverlay = document.getElementById('modalOverlay');
+    if (modalOverlay && modalOverlay.classList.contains('active')) {
+        let modalTimezone = null;
+        modalOverlay.querySelectorAll('.modal-row').forEach(row => {
+            const label = row.querySelector('.modal-label');
+            if (label && label.textContent.includes('Часовой пояс:')) {
+                const valueSpan = row.querySelector('.modal-value');
+                if (valueSpan) modalTimezone = valueSpan.textContent;
+            }
+        });
+        if (modalTimezone) {
+            modalOverlay.querySelectorAll('.modal-row').forEach(row => {
+                const label = row.querySelector('.modal-label');
+                if (label && label.textContent.includes('Местное время:')) {
+                    const valueSpan = row.querySelector('.modal-value');
+                    if (valueSpan) {
+                        valueSpan.textContent = getCurrentTimeForTimezone(modalTimezone);
+                    }
+                }
+            });
+        }
+    }
+}
+
+function updateAllMarkerTimes() {
+    if (markers.length === 0) return;
+
+    markers.forEach(item => {
+        const tz = item.data.timezone;
+        if (tz && tz !== 'Н/Д') {
+            item.data.localTime = getCurrentTimeForTimezone(tz);
+        }
+    });
+
+    const infoContent = document.getElementById('infoContent');
+    if (infoContent) {
+        updateVisibleTimeDisplay();
     }
 }
 
@@ -1316,7 +1411,7 @@ function displayFullInfo(data) {
             <div class="section-title">🕐 ВРЕМЯ</div>
             <div class="info-row">
                 <span class="info-label">Местное:</span>
-                <span class="info-value">${data.localTime || 'Н/Д'}</span>
+                <span class="info-value">${data.timezone ? getCurrentTimeForTimezone(data.timezone) : data.localTime || 'Н/Д'}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Часовой пояс:</span>
@@ -1459,3 +1554,6 @@ initMap();
 initSearch();
 updateTimestamp();
 setInterval(updateTimestamp, 1000);
+
+// Запуск автоматического обновления времени каждую секунду
+setInterval(updateAllMarkerTimes, 1000);
