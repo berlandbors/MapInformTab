@@ -71,11 +71,15 @@ function createMarker(lat, lng, data) {
         popupAnchor: [0, -15]
     });
 
-    const marker = L.marker([lat, lng], {
+    /*const marker = L.marker([lat, lng], {
         icon: icon,
         riseOnHover: true
-    }).addTo(map);
+    }).addTo(map);*/
+    
+// ВРЕМЕННОЕ РЕШЕНИЕ ДЛЯ ТЕСТА
+const marker = L.marker([lat, lng]).addTo(map); // ← Стандартный синий маркер Leaflet
 
+    
     const popupContent = createPopupContent(data);
     marker.bindPopup(popupContent, {
         maxWidth: 400,
