@@ -29,11 +29,12 @@ async function scanLocation(lat, lng) {
     showLoading();
 
     try {
-        const [weatherData, locationData, roadData, seismicData] = await Promise.all([
+        const [weatherData, locationData, roadData, seismicData, timezoneData] = await Promise.all([
             getWeatherData(lat, lng),
             getLocationData(lat, lng),
             getRoadData(lat, lng),
-            getSeismicData(lat, lng)
+            getSeismicData(lat, lng),
+            getTimezoneData(lat, lng)
         ]);
 
         const astronomyData = getAstronomyData(lat, lng, weatherData.timezone);
@@ -46,6 +47,7 @@ async function scanLocation(lat, lng) {
             ...seismicData,
             ...astronomyData,
             ...alertsData,
+            ...timezoneData,
             id: markerCount,
             scanTime: new Date().toLocaleString('ru-RU')
         };
@@ -211,6 +213,22 @@ function createPopupContent(data) {
             <div class="popup-row">
                 <span class="popup-label">Высота:</span>
                 <span class="popup-value">${data.elevation} м</span>
+            </div>
+        </div>
+
+        <div class="popup-section">
+            <div class="popup-section-title">🕐 ВРЕМЯ</div>
+            <div class="popup-row">
+                <span class="popup-label">Местное время:</span>
+                <span class="popup-value">${data.localTime || 'Н/Д'}</span>
+            </div>
+            <div class="popup-row">
+                <span class="popup-label">Часовой пояс:</span>
+                <span class="popup-value">${data.timezone || 'Н/Д'}</span>
+            </div>
+            <div class="popup-row">
+                <span class="popup-label">UTC смещение:</span>
+                <span class="popup-value">${data.utcOffset || 'Н/Д'}</span>
             </div>
         </div>
 
@@ -450,15 +468,33 @@ function openModal(data) {
         </div>`}
 
         <div class="modal-section">
-            <div class="modal-section-title">🕐 ВРЕМЯ И АСТРОНОМИЯ</div>
+            <div class="modal-section-title">🕐 ВРЕМЯ И ЧАСОВОЙ ПОЯС</div>
+            <div class="modal-row">
+                <span class="modal-label">Местное время:</span>
+                <span class="modal-value">${data.localTime || 'Н/Д'}</span>
+            </div>
             <div class="modal-row">
                 <span class="modal-label">Часовой пояс:</span>
                 <span class="modal-value">${data.timezone || 'Н/Д'}</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">Смещение UTC:</span>
-                <span class="modal-value">UTC${data.utcOffsetSeconds >= 0 ? '+' : ''}${Math.round((data.utcOffsetSeconds || 0) / 3600)}</span>
+                <span class="modal-value">${data.utcOffset || 'Н/Д'}</span>
             </div>
+            <div class="modal-row">
+                <span class="modal-label">Летнее время (DST):</span>
+                <span class="modal-value">${data.isDST ? '✓ Активно' : '✗ Не используется'}</span>
+            </div>
+            ${data.dstStart ? `
+            <div class="modal-row">
+                <span class="modal-label">Следующий перевод:</span>
+                <span class="modal-value">${new Date(data.dstStart).toLocaleString('ru-RU')}</span>
+            </div>
+            ` : ''}
+        </div>
+
+        <div class="modal-section">
+            <div class="modal-section-title">🌦️ АСТРОНОМИЯ</div>
             <div class="modal-row">
                 <span class="modal-label">🌅 Восход солнца:</span>
                 <span class="modal-value">${data.sunriseTime || 'Н/Д'}</span>
@@ -932,6 +968,46 @@ async function getSeismicData(lat, lng) {
     }
 }
 
+// Получение данных о часовом поясе через TimeAPI
+async function getTimezoneData(lat, lng) {
+    try {
+        const response = await fetch(
+            `https://timeapi.io/api/TimeZone/coordinate?latitude=${lat}&longitude=${lng}`
+        );
+        const data = await response.json();
+
+        let utcOffset = 'Н/Д';
+        if (typeof data.currentUtcOffset === 'string') {
+            utcOffset = data.currentUtcOffset;
+        } else if (data.currentUtcOffset && typeof data.currentUtcOffset === 'object') {
+            const h = data.currentUtcOffset.hours ?? 0;
+            const m = Math.abs(data.currentUtcOffset.minutes ?? 0);
+            utcOffset = `${h >= 0 ? '+' : '-'}${String(Math.abs(h)).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+
+        const localTime = data.currentLocalTime
+            ? new Date(data.currentLocalTime).toLocaleString('ru-RU')
+            : 'Н/Д';
+
+        const dstStart = data.dstStart ?? data.dstInterval?.dstStart ?? data.dstInterval?.dstNextStart ?? null;
+
+        return {
+            localTime,
+            utcOffset,
+            isDST: data.dstActive ?? false,
+            dstStart
+        };
+    } catch (error) {
+        console.error('Ошибка получения данных о часовом поясе:', error);
+        return {
+            localTime: 'Н/Д',
+            utcOffset: 'Н/Д',
+            isDST: false,
+            dstStart: null
+        };
+    }
+}
+
 // Астрономические данные через SunCalc.js
 function getAstronomyData(lat, lng, timezone) {
     try {
@@ -1172,11 +1248,23 @@ function displayFullInfo(data) {
         </div>` : ''}
 
         <div class="info-section">
-            <div class="section-title">🕐 ВРЕМЯ И АСТРОНОМИЯ</div>
+            <div class="section-title">🕐 ВРЕМЯ</div>
+            <div class="info-row">
+                <span class="info-label">Местное:</span>
+                <span class="info-value">${data.localTime || 'Н/Д'}</span>
+            </div>
             <div class="info-row">
                 <span class="info-label">Часовой пояс:</span>
                 <span class="info-value">${data.timezone || 'Н/Д'}</span>
             </div>
+            <div class="info-row">
+                <span class="info-label">UTC:</span>
+                <span class="info-value">${data.utcOffset || 'Н/Д'}</span>
+            </div>
+        </div>
+
+        <div class="info-section">
+            <div class="section-title">🌦️ АСТРОНОМИЯ</div>
             <div class="info-row">
                 <span class="info-label">🌅 Восход солнца:</span>
                 <span class="info-value">${data.sunriseTime || 'Н/Д'}</span>
