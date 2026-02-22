@@ -686,7 +686,7 @@ async function getRoadData(lat, lng) {
 // Получение иконки погоды по коду
 function getWeatherIcon(code) {
     if (code === 0) return '☀️';
-    if (code <= 3) return '��️';
+    if (code <= 3) return '☁️';
     if (code <= 49) return '🌫️';
     if (code <= 69) return '🌧️';
     if (code <= 79) return '🌨️';
