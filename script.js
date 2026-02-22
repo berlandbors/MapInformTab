@@ -1004,12 +1004,25 @@ async function getTimezoneData(lat, lng) {
 
         const utcOffset = `${offsetHours >= 0 ? '+' : '-'}${String(Math.abs(offsetHours)).padStart(2, '0')}:${String(offsetMinutes).padStart(2, '0')}`;
 
+        // Определяем статус DST: сравниваем текущий offset со стандартным offset
+        // Используем январь и июль, берём меньший offset как стандартный (без DST)
+        // Это корректно работает как для северного, так и для южного полушария
+        const janDate = new Date(now.getFullYear(), 0, 1);
+        const julDate = new Date(now.getFullYear(), 6, 1);
+        const janOffsetMs = new Date(janDate.toLocaleString('en-US', { timeZone: timezoneName })) - new Date(janDate.toLocaleString('en-US', { timeZone: 'UTC' }));
+        const julOffsetMs = new Date(julDate.toLocaleString('en-US', { timeZone: timezoneName })) - new Date(julDate.toLocaleString('en-US', { timeZone: 'UTC' }));
+        const standardOffsetMs = Math.min(janOffsetMs, julOffsetMs);
+        const currentOffsetMs = tzDate - utcDate;
+
+        // Если текущее смещение больше стандартного - значит DST активен
+        const isDST = currentOffsetMs > standardOffsetMs;
+
         const dstStart = data.dstStart ?? data.dstInterval?.dstStart ?? data.dstInterval?.dstNextStart ?? null;
 
         return {
             localTime,
             utcOffset,
-            isDST: data.dstActive ?? false,
+            isDST,
             dstStart
         };
     } catch (error) {
