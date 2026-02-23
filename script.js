@@ -6,6 +6,14 @@ let searchTimeout = null;
 // Определение мобильного устройства
 const isMobile = window.matchMedia("(max-width: 768px)").matches;
 
+// Вспомогательная функция задержки
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Текущие координаты последнего сканирования
+let lastScannedCoords = null;
+
 function getDeviceType() {
     const width = window.innerWidth;
     const height = window.innerHeight;
@@ -42,9 +50,83 @@ function initMap() {
     });
 }
 
+// Оценка качества полученных данных
+function calculateDataQuality(fullData) {
+  const checks = [
+    { field: 'road', weight: 15, label: 'улица' },
+    { field: 'city', weight: 20, label: 'город' },
+    { field: 'country', weight: 15, label: 'страна' },
+    { field: 'timezone', weight: 10, label: 'часовой пояс' },
+    { field: 'temp', weight: 10, label: 'температура' },
+    { field: 'roadName', weight: 10, label: 'название дороги' },
+    { field: 'objectName', weight: 5, label: 'объект' },
+    { field: 'roadType', weight: 5, label: 'тип дороги' },
+    { field: 'localTime', weight: 10, label: 'местное время' }
+  ];
+
+  let score = 0;
+  const missingFields = [];
+
+  checks.forEach(check => {
+    const value = fullData[check.field];
+    const isValid = value &&
+                    value !== 'Н/Д' &&
+                    value !== 'Нет данных' &&
+                    value !== 'Ошибка загрузки' &&
+                    value !== 'Недоступно';
+
+    if (isValid) {
+      score += check.weight;
+    } else {
+      missingFields.push(check.label);
+    }
+  });
+
+  return {
+    score: score,
+    grade: score >= 80 ? 'excellent' : score >= 60 ? 'good' : score >= 40 ? 'fair' : 'poor',
+    missingFields: missingFields,
+    stars: Math.round(score / 20) // 0-5 звезд
+  };
+}
+
+// Получить метку качества на русском
+function getQualityLabel(grade) {
+    const labels = {
+        'excellent': 'Отлично',
+        'good': 'Хорошо',
+        'fair': 'Удовлетворительно',
+        'poor': 'Низкое'
+    };
+    return labels[grade] || 'Неизвестно';
+}
+
+// Получить цветовой класс для индикатора
+function getQualityColorClass(grade) {
+    const classes = {
+        'excellent': 'quality-excellent',
+        'good': 'quality-good',
+        'fair': 'quality-fair',
+        'poor': 'quality-poor'
+    };
+    return classes[grade] || '';
+}
+
+// Пересканирование текущей локации
+async function rescanCurrentLocation() {
+    if (!lastScannedCoords) {
+        showError('Нет данных для пересканирования');
+        return;
+    }
+
+    console.log('🔄 Ручное пересканирование с улучшенными параметрами...');
+    await scanLocation(lastScannedCoords.lat, lastScannedCoords.lng, true);
+}
+
 // Главная функция сканирования локации
-async function scanLocation(lat, lng) {
+async function scanLocation(lat, lng, isRescan = false) {
     markerCount++;
+    lastScannedCoords = { lat, lng };
     showLoading();
 
     try {
@@ -71,11 +153,26 @@ async function scanLocation(lat, lng) {
             scanTime: new Date().toLocaleString('ru-RU')
         };
 
+        // Оценка качества данных
+        const quality = calculateDataQuality(fullData);
+        fullData.quality = quality;
+
+        console.log(`📊 Качество данных: ${quality.score}/100 (${getQualityLabel(quality.grade)})`);
+
+        // Автоматическое пересканирование при низком качестве (только первый раз)
+        if (quality.score < 50 && !isRescan) {
+            console.log('⚠️ Низкое качество данных, автоматическое пересканирование...');
+            markerCount--;
+            showLoading();
+            await sleep(1500);
+            return scanLocation(lat, lng, true);
+        }
+
         createMarker(lat, lng, fullData);
         displayFullInfo(fullData);
 
         // Автоматически переключить на таб "Информация" в мобильном режиме
-        if (deviceType === 'smartphone-portrait') {
+        if (typeof deviceType !== 'undefined' && deviceType === 'smartphone-portrait') {
             switchMobileTab('info');
         }
 
@@ -271,6 +368,26 @@ function createPopupContent(data) {
         <button class="popup-details-btn" onclick="openModalById(${markerIndex})">
             [ 📋 ПОЛНАЯ ИНФОРМАЦИЯ ]
         </button>
+
+        ${data.quality ? `
+        <div class="popup-section quality-section">
+            <div class="popup-section-title">📊 КАЧЕСТВО ДАННЫХ</div>
+            <div class="quality-indicator ${getQualityColorClass(data.quality.grade)}">
+                <div class="quality-stars">${'⭐'.repeat(data.quality.stars)}${'☆'.repeat(5 - data.quality.stars)}</div>
+                <div class="quality-label">${getQualityLabel(data.quality.grade)} (${data.quality.score}/100)</div>
+                ${data.quality.missingFields.length > 0 ? `
+                <div class="quality-missing">
+                    <small>Отсутствуют: ${data.quality.missingFields.slice(0, 3).join(', ')}</small>
+                </div>
+                ` : ''}
+            </div>
+            ${data.quality.score < 80 ? `
+            <button class="rescan-button-small" onclick="rescanCurrentLocation()">
+                🔄 Пересканировать
+            </button>
+            ` : ''}
+        </div>
+        ` : ''}
 
         <div style="text-align: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0, 255, 0, 0.3); font-size: 10px; color: #00aa00;">
             ${data.scanTime}
@@ -583,6 +700,32 @@ function openModal(data) {
                 <span class="modal-value">${data.moonIllumination ?? 0}%</span>
             </div>
         </div>
+
+        ${data.quality ? `
+        <div class="modal-section">
+            <div class="modal-section-title">📊 КАЧЕСТВО ДАННЫХ</div>
+            <div class="quality-indicator-large ${getQualityColorClass(data.quality.grade)}">
+                <div class="quality-stars-large">${'⭐'.repeat(data.quality.stars)}${'☆'.repeat(5 - data.quality.stars)}</div>
+                <div class="quality-score">${data.quality.score} / 100 баллов</div>
+                <div class="quality-grade">${getQualityLabel(data.quality.grade)}</div>
+                ${data.quality.missingFields.length > 0 ? `
+                <div class="quality-issues">
+                    <div class="quality-issues-title">Отсутствующие данные:</div>
+                    <ul>
+                        ${data.quality.missingFields.map(f => `<li>${f}</li>`).join('')}
+                    </ul>
+                </div>
+                ` : `
+                <div class="quality-success">✅ Все основные данные получены</div>
+                `}
+                ${data.quality.score < 80 ? `
+                <button class="rescan-button" onclick="rescanCurrentLocation(); closeModal();">
+                    🔄 Пересканировать с улучшенными параметрами
+                </button>
+                ` : ''}
+            </div>
+        </div>
+        ` : ''}
     `;
 
     overlay.classList.add('active');
@@ -652,17 +795,28 @@ async function getWeatherData(lat, lng) {
     }
 }
 
-// Получение геолокационных данных через Nominatim API
-async function getLocationData(lat, lng) {
+// Получение геолокационных данных через Nominatim API с retry
+async function getLocationData(lat, lng, attempt = 1) {
+    const maxAttempts = 3;
+
     try {
-        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1`;
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=18`;
+
         const response = await fetch(url, {
-            headers: { 'Accept-Language': 'ru' }
+            headers: {
+                'Accept-Language': 'ru',
+                'User-Agent': 'MapInformTab/2.0'
+            }
         });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
         const data = await response.json();
         const addr = data.address || {};
 
-        return {
+        const locationData = {
             road: addr.road || addr.pedestrian || addr.path || addr.footway || 'Нет данных',
             houseNumber: addr.house_number || null,
             city: addr.city || addr.town || addr.village || addr.hamlet || addr.county || 'Нет данных',
@@ -674,8 +828,28 @@ async function getLocationData(lat, lng) {
             objectType: data.type || addr.amenity || addr.building || addr.shop || addr.tourism || addr.leisure || null,
             objectName: addr.name || data.name || null
         };
+
+        // Проверка качества данных
+        const hasMinimumData = locationData.city !== 'Нет данных' &&
+                               locationData.country !== 'Нет данных';
+
+        if (!hasMinimumData && attempt < maxAttempts) {
+            console.log(`⚠️ Геолокация попытка ${attempt}: недостаточно данных, повтор...`);
+            await sleep(1000 * attempt);
+            return getLocationData(lat, lng, attempt + 1);
+        }
+
+        return locationData;
+
     } catch (error) {
-        console.error('Ошибка получения геолокации:', error);
+        console.error(`Ошибка геолокации (попытка ${attempt}):`, error);
+
+        if (attempt < maxAttempts) {
+            console.log(`🔄 Повторный запрос геолокации через ${attempt} сек...`);
+            await sleep(1000 * attempt);
+            return getLocationData(lat, lng, attempt + 1);
+        }
+
         return {
             road: 'Ошибка загрузки',
             houseNumber: null,
@@ -691,21 +865,39 @@ async function getLocationData(lat, lng) {
     }
 }
 
-// Получение данных о дорогах через Overpass API
-async function getRoadData(lat, lng) {
+// Получение данных о дорогах через Overpass API с каскадным поиском
+async function getRoadData(lat, lng, attempt = 1) {
+    const radiuses = [50, 100, 200];
+    const radius = radiuses[Math.min(attempt - 1, radiuses.length - 1)];
+
     try {
-        const radius = 50;
         const query = `[out:json][timeout:10];
             way(around:${radius},${lat},${lng})[highway];
-            out body 1;`;
+            out body 5;`; // Получаем до 5 дорог для выбора лучшей по важности
+
         const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
         const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
         const data = await response.json();
 
         if (data.elements && data.elements.length > 0) {
-            const road = data.elements[0];
-            const tags = road.tags || {};
+            // Выбираем лучшую дорогу (с названием и важным типом)
+            const bestRoad = data.elements
+                .filter(r => r.tags && r.tags.highway)
+                .sort((a, b) => {
+                    const scoreA = (a.tags.name ? 10 : 0) + getRoadImportance(a.tags.highway);
+                    const scoreB = (b.tags.name ? 10 : 0) + getRoadImportance(b.tags.highway);
+                    return scoreB - scoreA;
+                })[0];
+
+            const tags = bestRoad.tags || {};
             const traffic = estimateTraffic(tags.highway);
+
+            console.log(`✅ Дорога найдена в радиусе ${radius}м: ${tags.name || tags.highway}`);
 
             return {
                 roadName: tags.name || tags['name:ru'] || null,
@@ -717,6 +909,14 @@ async function getRoadData(lat, lng) {
             };
         }
 
+        // Если не нашли дороги и есть еще попытки - увеличиваем радиус
+        if (attempt < radiuses.length) {
+            console.log(`🔍 Дороги не найдены в радиусе ${radius}м, расширяем поиск...`);
+            await sleep(500);
+            return getRoadData(lat, lng, attempt + 1);
+        }
+
+        console.log(`❌ Дороги не найдены в радиусе ${radiuses[radiuses.length - 1]}м`);
         return {
             roadName: null,
             roadType: 'Нет дорог поблизости',
@@ -725,8 +925,16 @@ async function getRoadData(lat, lng) {
             lanes: null,
             traffic: 'Нет данных'
         };
+
     } catch (error) {
         console.error('Ошибка получения данных о дорогах:', error);
+
+        if (attempt < radiuses.length) {
+            console.log(`🔄 Повторный запрос дорог через 1 сек...`);
+            await sleep(1000);
+            return getRoadData(lat, lng, attempt + 1);
+        }
+
         return {
             roadName: null,
             roadType: 'Ошибка загрузки',
@@ -736,6 +944,23 @@ async function getRoadData(lat, lng) {
             traffic: 'Нет данных'
         };
     }
+}
+
+// Определить важность типа дороги (для выбора лучшей)
+function getRoadImportance(highway) {
+    const importance = {
+        'motorway': 10,
+        'trunk': 9,
+        'primary': 8,
+        'secondary': 7,
+        'tertiary': 6,
+        'residential': 5,
+        'unclassified': 4,
+        'service': 3,
+        'track': 2,
+        'path': 1
+    };
+    return importance[highway] || 0;
 }
 
 // Получение иконки погоды по коду
@@ -1023,12 +1248,19 @@ async function getSeismicData(lat, lng) {
     }
 }
 
-// Получение данных о часовом поясе через TimeAPI
-async function getTimezoneData(lat, lng) {
+// Получение данных о часовом поясе через TimeAPI с retry
+async function getTimezoneData(lat, lng, attempt = 1) {
+    const maxAttempts = 3;
+
     try {
         const response = await fetch(
             `https://timeapi.io/api/TimeZone/coordinate?latitude=${lat}&longitude=${lng}`
         );
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
         const data = await response.json();
 
         const timezoneName = data.timeZone || 'UTC';
@@ -1125,7 +1357,14 @@ async function getTimezoneData(lat, lng) {
             dstStart
         };
     } catch (error) {
-        console.error('Ошибка получения данных о часовом поясе:', error);
+        console.error(`Ошибка получения данных о часовом поясе (попытка ${attempt}):`, error);
+
+        if (attempt < maxAttempts) {
+            console.log(`🔄 Повторный запрос часового пояса через ${attempt} сек...`);
+            await sleep(1000 * attempt);
+            return getTimezoneData(lat, lng, attempt + 1);
+        }
+
         return {
             timezone: 'Н/Д',
             utcOffset: 'Н/Д',
