@@ -1154,3 +1154,302 @@ body {
     min-width: 24px;
     text-align: right;
 }
+
+/* ===== АНАЛИЗ ДАВЛЕНИЯ ===== */
+.pressure-analysis {}
+
+.pressure-main {
+    text-align: center;
+    padding: 10px 0 8px;
+}
+
+.pressure-value-large {
+    font-size: 20px;
+    font-weight: bold;
+    color: #00ff00;
+    text-shadow: 0 0 10px rgba(0, 255, 0, 0.6);
+    margin-bottom: 4px;
+}
+
+.pressure-level {
+    font-size: 13px;
+    font-weight: bold;
+    margin-bottom: 4px;
+    text-shadow: 0 0 6px currentColor;
+}
+
+.pressure-trend {
+    font-size: 11px;
+    color: #00aa00;
+    letter-spacing: 1px;
+}
+
+.pressure-subsection {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dotted rgba(0, 255, 0, 0.3);
+}
+
+.pressure-subsection-title {
+    color: #00aa00;
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.pressure-effect {
+    font-size: 10px;
+    color: #00cc00;
+    padding: 2px 0;
+    padding-left: 4px;
+}
+
+.weather-forecast {
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: rgba(0, 255, 0, 0.06);
+    border-left: 2px solid rgba(0, 255, 0, 0.4);
+    font-size: 11px;
+    color: #00dd00;
+    line-height: 1.4;
+}
+
+.forecast-icon {
+    margin-right: 4px;
+}
+
+/* ===== СЕКЦИЯ ОПАСНОСТЕЙ ===== */
+.hazards-section {}
+
+.hazards-count {
+    display: inline-block;
+    background: #ff4444;
+    color: #000;
+    font-size: 10px;
+    font-weight: bold;
+    padding: 1px 6px;
+    border-radius: 10px;
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.hazard-item {
+    margin-bottom: 8px;
+    padding: 8px;
+    border-left: 3px solid #ffaa00;
+    background: rgba(255, 170, 0, 0.05);
+}
+
+.hazard-item.severity-critical {
+    border-left-color: #ff4444;
+    background: rgba(255, 68, 68, 0.08);
+    animation: hazardPulse 2s infinite;
+}
+
+.hazard-item.severity-high {
+    border-left-color: #ff6600;
+    background: rgba(255, 102, 0, 0.07);
+}
+
+.hazard-item.severity-moderate {
+    border-left-color: #ffaa00;
+    background: rgba(255, 170, 0, 0.05);
+}
+
+@keyframes hazardPulse {
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: 0 0 8px rgba(255, 68, 68, 0.4); }
+}
+
+.hazard-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.hazard-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.hazard-title {
+    flex: 1;
+    font-size: 11px;
+    font-weight: bold;
+    color: #00ff00;
+}
+
+.hazard-badge {
+    font-size: 9px;
+    font-weight: bold;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ffaa00;
+}
+
+.severity-critical .hazard-badge { color: #ff4444; }
+.severity-high .hazard-badge { color: #ff6600; }
+.severity-moderate .hazard-badge { color: #ffaa00; }
+
+.hazard-details {
+    font-size: 10px;
+    color: #00aa00;
+    padding-left: 20px;
+}
+
+.hazard-value {
+    font-weight: bold;
+    color: #ffaa00;
+    margin-bottom: 2px;
+}
+
+.hazard-critical {
+    color: #ff4444;
+    text-shadow: 0 0 5px rgba(255, 68, 68, 0.5);
+}
+
+.hazard-action-btn {
+    display: block;
+    margin-top: 6px;
+    margin-left: 20px;
+    padding: 4px 10px;
+    background: rgba(0, 255, 0, 0.1);
+    border: 1px solid rgba(0, 255, 0, 0.5);
+    color: #00ff00;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    transition: all 0.2s;
+}
+
+.hazard-action-btn:hover {
+    background: rgba(0, 255, 0, 0.2);
+    border-color: #00ff00;
+}
+
+.no-hazards {
+    text-align: center;
+    padding: 12px;
+    color: #00aa00;
+    font-size: 11px;
+}
+
+.no-hazards-icon {
+    display: block;
+    font-size: 24px;
+    margin-bottom: 6px;
+}
+
+/* ===== СОСТОЯНИЕ ПОВЕРХНОСТИ ===== */
+.surface-section {}
+
+.surface-analysis {}
+
+.surface-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px dotted rgba(0, 255, 0, 0.3);
+}
+
+.surface-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.surface-title {
+    flex: 1;
+    font-size: 13px;
+    font-weight: bold;
+    color: #00ff00;
+    text-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
+}
+
+.surface-danger {
+    font-size: 9px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: rgba(255, 68, 68, 0.15);
+    color: #ff4444;
+    border: 1px solid rgba(255, 68, 68, 0.3);
+    animation: surfacePulse 2s infinite;
+}
+
+@keyframes surfacePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+}
+
+.surface-description {
+    font-size: 11px;
+    color: #00cc00;
+    margin-bottom: 8px;
+    font-style: italic;
+}
+
+.surface-subsection {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dotted rgba(0, 255, 0, 0.2);
+}
+
+.surface-subsection-title {
+    color: #00aa00;
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.accumulated-info {
+    background: rgba(0, 255, 0, 0.04);
+    padding: 6px;
+    border: 1px solid rgba(0, 255, 0, 0.15);
+}
+
+.accumulated-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #00aa00;
+    padding: 2px 0;
+    border-bottom: 1px dotted rgba(0, 255, 0, 0.1);
+}
+
+.accumulated-row:last-child { border-bottom: none; }
+
+.accumulated-row span:last-child {
+    color: #00ff00;
+    font-weight: bold;
+}
+
+.impact-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.impact-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 4px;
+    background: rgba(0, 255, 0, 0.05);
+    border: 1px solid rgba(0, 255, 0, 0.2);
+    font-size: 10px;
+    text-align: center;
+    gap: 2px;
+}
+
+.impact-item span:first-child { color: #00aa00; }
+.impact-item span:last-child { color: #00ff00; font-weight: bold; }
+
+.surface-effect {
+    font-size: 10px;
+    color: #00cc00;
+    padding: 3px 0;
+    line-height: 1.4;
+}
