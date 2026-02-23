@@ -954,3 +954,142 @@ body {
         transform: translateX(0);
     }
 }
+
+/* Индикатор качества данных */
+.quality-section {
+    background: rgba(0, 50, 0, 0.3);
+    border: 1px solid rgba(0, 255, 0, 0.3);
+    border-radius: 5px;
+    padding: 10px;
+    margin-top: 10px;
+}
+
+.quality-indicator {
+    text-align: center;
+    padding: 10px;
+}
+
+.quality-stars {
+    font-size: 18px;
+    margin-bottom: 5px;
+}
+
+.quality-label {
+    color: #00ff00;
+    font-size: 12px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.quality-missing {
+    color: #ffaa00;
+    font-size: 10px;
+    margin-top: 5px;
+    font-style: italic;
+}
+
+/* Цветовые классы качества */
+.quality-excellent .quality-label { color: #00ff00; text-shadow: 0 0 10px #00ff00; }
+.quality-good .quality-label { color: #88ff00; }
+.quality-fair .quality-label { color: #ffaa00; }
+.quality-poor .quality-label { color: #ff6600; }
+
+/* Кнопка пересканирования */
+.rescan-button-small, .rescan-button {
+    background: linear-gradient(135deg, #004400 0%, #006600 100%);
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: bold;
+    margin-top: 10px;
+    transition: all 0.3s;
+    width: 100%;
+    text-align: center;
+}
+
+.rescan-button-small:hover, .rescan-button:hover {
+    background: linear-gradient(135deg, #006600 0%, #008800 100%);
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+    transform: translateY(-2px);
+}
+
+.rescan-button-small:active, .rescan-button:active {
+    transform: translateY(0);
+}
+
+/* Большой индикатор для модального окна */
+.quality-indicator-large {
+    background: rgba(0, 50, 0, 0.5);
+    border: 2px solid rgba(0, 255, 0, 0.5);
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+}
+
+.quality-stars-large {
+    font-size: 32px;
+    margin-bottom: 10px;
+}
+
+.quality-score {
+    color: #00ff00;
+    font-size: 24px;
+    font-weight: bold;
+    margin: 10px 0;
+    text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.quality-grade {
+    color: #00aa00;
+    font-size: 16px;
+    margin-bottom: 15px;
+}
+
+.quality-issues {
+    background: rgba(255, 100, 0, 0.1);
+    border: 1px solid rgba(255, 100, 0, 0.3);
+    border-radius: 5px;
+    padding: 15px;
+    margin: 15px 0;
+    text-align: left;
+}
+
+.quality-issues-title {
+    color: #ff6600;
+    font-size: 12px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.quality-issues ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.quality-issues li {
+    color: #ffaa00;
+    font-size: 11px;
+    padding: 3px 0;
+    padding-left: 15px;
+    position: relative;
+}
+
+.quality-issues li:before {
+    content: '⚠️';
+    position: absolute;
+    left: 0;
+}
+
+.quality-success {
+    color: #00ff00;
+    font-size: 14px;
+    margin: 15px 0;
+    padding: 10px;
+    background: rgba(0, 255, 0, 0.1);
+    border-radius: 5px;
+}
