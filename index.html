@@ -44,6 +44,28 @@
         <div class="map-container">
             <div class="scanline"></div>
             <div id="map"></div>
+            <!-- Панель управления слоями -->
+            <div class="layers-panel" id="layersPanel">
+                <div class="layers-panel-title">[ СЛОИ ]</div>
+                <label class="layer-item">
+                    <input type="checkbox" id="layer-earthquakes" checked onchange="toggleLayer('earthquakes')">
+                    <span class="layer-icon">🔴</span>
+                    <span class="layer-label">Землетрясения</span>
+                    <span class="layer-count" id="count-earthquakes">0</span>
+                </label>
+                <label class="layer-item">
+                    <input type="checkbox" id="layer-fireRisk" checked onchange="toggleLayer('fireRisk')">
+                    <span class="layer-icon">🔥</span>
+                    <span class="layer-label">Пожарная опасность</span>
+                    <span class="layer-count" id="count-fireRisk">—</span>
+                </label>
+                <label class="layer-item">
+                    <input type="checkbox" id="layer-roadPrecip" checked onchange="toggleLayer('roadPrecip')">
+                    <span class="layer-icon">🌧️</span>
+                    <span class="layer-label">Осадки на дорогах</span>
+                    <span class="layer-count" id="count-roadPrecip">—</span>
+                </label>
+            </div>
         </div>
         
         <div class="info-panel" id="info-panel">
