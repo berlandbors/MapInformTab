@@ -3,6 +3,11 @@ let markers = [];
 let markerCount = 0;
 let searchTimeout = null;
 
+// Слои карты
+let layerGroups = {};
+let connectionLines = [];
+let layerStates = { earthquakes: true, fireRisk: true, roadPrecip: true };
+
 // Определение мобильного устройства
 const isMobile = window.matchMedia("(max-width: 768px)").matches;
 
@@ -42,6 +47,8 @@ function initMap() {
         attribution: '© OpenStreetMap contributors',
         maxZoom: 19
     }).addTo(map);
+
+    initLayers();
 
     map.on('click', async function(e) {
         const lat = e.latlng.lat;
@@ -157,6 +164,10 @@ async function scanLocation(lat, lng, isRescan = false) {
         const quality = calculateDataQuality(fullData);
         fullData.quality = quality;
 
+        // Расчёт пожарной опасности и дорожных условий
+        fullData.fireRisk = calculateFireRisk(fullData);
+        fullData.precipAnalysis = getRoadPrecipAnalysis(fullData);
+
         console.log(`📊 Качество данных: ${quality.score}/100 (${getQualityLabel(quality.grade)})`);
 
         // Автоматическое пересканирование при низком качестве (только первый раз)
@@ -170,6 +181,7 @@ async function scanLocation(lat, lng, isRescan = false) {
 
         createMarker(lat, lng, fullData);
         displayFullInfo(fullData);
+        updateLayersForLocation(lat, lng, fullData);
 
         // Автоматически переключить на таб "Информация" в мобильном режиме
         if (typeof deviceType !== 'undefined' && deviceType === 'smartphone-portrait') {
@@ -1239,7 +1251,9 @@ async function getSeismicData(lat, lng) {
             magnitude: (f.properties.mag != null) ? f.properties.mag.toFixed(1) : '?',
             depth: (f.geometry.coordinates[2] != null) ? Math.round(f.geometry.coordinates[2]) : '?',
             place: escapeHtml(f.properties.place || 'Нет данных'),
-            time: new Date(f.properties.time).toLocaleString('ru-RU')
+            time: new Date(f.properties.time).toLocaleString('ru-RU'),
+            lat: f.geometry.coordinates[1],
+            lng: f.geometry.coordinates[0]
         }));
         return { seismicEvents: events };
     } catch (error) {
@@ -1585,6 +1599,320 @@ function getMoonPhaseName(phase) {
     return '🌘 Убывающий серп';
 }
 
+// Расчёт пожарной опасности на основе метеоданных
+function calculateFireRisk(weatherData) {
+    const temp = typeof weatherData.temp === 'number' ? weatherData.temp : 20;
+    const humidity = typeof weatherData.humidity === 'number' ? weatherData.humidity : 50;
+    const windSpeed = typeof weatherData.windSpeed === 'number' ? weatherData.windSpeed : 3;
+    const precipitation = typeof weatherData.precipitation === 'number' ? weatherData.precipitation : 0;
+    const precipProbability = typeof weatherData.precipProbability === 'number' ? weatherData.precipProbability : 0;
+
+    let riskScore = 0;
+
+    // Вклад температуры (0–30 баллов)
+    if (temp >= 35) riskScore += 30;
+    else if (temp >= 25) riskScore += 20;
+    else if (temp >= 15) riskScore += 10;
+
+    // Вклад влажности (0–30 баллов, обратная зависимость)
+    if (humidity <= 20) riskScore += 30;
+    else if (humidity <= 40) riskScore += 20;
+    else if (humidity <= 60) riskScore += 10;
+
+    // Вклад скорости ветра (0–20 баллов)
+    if (windSpeed >= 10) riskScore += 20;
+    else if (windSpeed >= 5) riskScore += 10;
+    else riskScore += 5;
+
+    // Снижение из-за осадков
+    if (precipitation > 5) riskScore -= 20;
+    else if (precipitation > 1) riskScore -= 10;
+    if (precipProbability > 70) riskScore -= 10;
+
+    riskScore = Math.max(0, Math.min(100, riskScore));
+
+    let level, color, description, recommendation;
+    if (riskScore >= 70) {
+        level = 'extreme'; color = '#ff4444';
+        description = 'Чрезвычайно высокая';
+        recommendation = 'Категорически запрещено разводить огонь';
+    } else if (riskScore >= 50) {
+        level = 'high'; color = '#ff6600';
+        description = 'Высокая';
+        recommendation = 'Запрещено разводить костры в лесу';
+    } else if (riskScore >= 30) {
+        level = 'medium'; color = '#ffaa00';
+        description = 'Умеренная';
+        recommendation = 'Соблюдайте осторожность с огнём';
+    } else {
+        level = 'low'; color = '#00aa00';
+        description = 'Низкая';
+        recommendation = 'Пожарная обстановка спокойная';
+    }
+
+    return { score: riskScore, level, color, description, recommendation };
+}
+
+// Анализ условий для водителей при осадках
+function getRoadPrecipAnalysis(data) {
+    const temp = typeof data.temp === 'number' ? data.temp : 20;
+    const precipitation = typeof data.precipitation === 'number' ? data.precipitation : 0;
+    const weatherCode = data.weatherCode || 0;
+    const visibility = typeof data.visibility === 'number' ? data.visibility : 10;
+    const windSpeed = typeof data.windSpeed === 'number' ? data.windSpeed : 0;
+    const precipProbability = typeof data.precipProbability === 'number' ? data.precipProbability : 0;
+
+    // Состояние дорожного покрытия
+    let surfaceCondition, surfaceColor, speedReduction;
+    if (temp < 0 && precipitation > 0) {
+        surfaceCondition = '🧊 Гололедица'; surfaceColor = '#00aaff'; speedReduction = 50;
+    } else if (temp < 2 && precipProbability > 50) {
+        surfaceCondition = '⚠️ Риск гололедицы'; surfaceColor = '#ffaa00'; speedReduction = 30;
+    } else if (precipitation > 5 || (weatherCode >= 80 && weatherCode <= 82)) {
+        surfaceCondition = '💧 Сильное намокание'; surfaceColor = '#ff6600'; speedReduction = 30;
+    } else if (precipitation > 0.5 || (weatherCode >= 61 && weatherCode <= 67)) {
+        surfaceCondition = '🌧️ Мокрое покрытие'; surfaceColor = '#ffaa00'; speedReduction = 20;
+    } else {
+        surfaceCondition = '✅ Сухое покрытие'; surfaceColor = '#00ff00'; speedReduction = 0;
+    }
+
+    // Предупреждение о видимости
+    let visibilityWarning = null;
+    if (visibility < 0.5 || weatherCode === 45 || weatherCode === 48) {
+        visibilityWarning = '🌫️ Очень плохая видимость — включите противотуманные фары';
+    } else if (visibility < 2) {
+        visibilityWarning = '🌫️ Плохая видимость — снизьте скорость';
+    } else if (precipitation > 2 || weatherCode >= 63) {
+        visibilityWarning = '🌧️ Ограниченная видимость из-за осадков';
+    }
+
+    // Предупреждение о ветре
+    let windWarning = null;
+    if (windSpeed > 20) {
+        windWarning = '💨 Сильный ветер — возможен снос транспортных средств';
+    } else if (windSpeed > 12) {
+        windWarning = '💨 Порывистый ветер — опасность для высокого транспорта';
+    }
+
+    // Рекомендации для водителей
+    const recommendations = [];
+    if (speedReduction > 0) {
+        const maxSpeed = data.maxSpeed;
+        if (maxSpeed) {
+            const safeSpeed = Math.round(maxSpeed * (1 - speedReduction / 100));
+            recommendations.push(`Рекомендуемая скорость: ≤ ${safeSpeed} км/ч`);
+        } else {
+            recommendations.push(`Снизьте скорость на ${speedReduction}%`);
+        }
+    }
+    if (precipitation > 0) {
+        recommendations.push('Увеличьте дистанцию до впереди идущего автомобиля');
+    }
+    if (temp < 3 && temp > -5) {
+        recommendations.push('Возможны скользкие участки на мостах');
+    }
+
+    return { surfaceCondition, surfaceColor, speedReduction, visibilityWarning, windWarning, recommendations };
+}
+
+// Инициализация слоёв карты
+function initLayers() {
+    layerGroups.earthquakes = L.layerGroup().addTo(map);
+    layerGroups.fireRisk = L.layerGroup().addTo(map);
+    layerGroups.roadPrecip = L.layerGroup().addTo(map);
+}
+
+// Очистка всех слоёв
+function clearLayers() {
+    Object.values(layerGroups).forEach(lg => { if (lg) lg.clearLayers(); });
+    connectionLines.forEach(line => map.removeLayer(line));
+    connectionLines = [];
+    ['earthquakes', 'fireRisk', 'roadPrecip'].forEach(name => {
+        const el = document.getElementById(`count-${name}`);
+        if (el) el.textContent = name === 'earthquakes' ? '0' : '—';
+    });
+}
+
+// Отображение слоя землетрясений с маркерами и линиями связи
+function showEarthquakeLayer(mainLat, mainLng, seismicEvents) {
+    if (!layerGroups.earthquakes) return;
+    layerGroups.earthquakes.clearLayers();
+
+    seismicEvents.forEach(event => {
+        if (event.lat == null || event.lng == null) return;
+
+        const mag = parseFloat(event.magnitude) || 0;
+        const color = mag >= 6 ? '#ff4444' : mag >= 4 ? '#ff6600' : '#ffaa00';
+        const radius = Math.max(8, mag * 5);
+
+        const circle = L.circleMarker([event.lat, event.lng], {
+            radius,
+            fillColor: color,
+            color: color,
+            weight: 2,
+            opacity: 0.9,
+            fillOpacity: 0.5
+        });
+
+        circle.bindPopup(`
+            <div class="popup-title">🔴 ЗЕМЛЕТРЯСЕНИЕ</div>
+            <div class="popup-section">
+                <div class="popup-row">
+                    <span class="popup-label">Магнитуда:</span>
+                    <span class="popup-value"><span class="magnitude-indicator">M${event.magnitude}</span></span>
+                </div>
+                <div class="popup-row">
+                    <span class="popup-label">Место:</span>
+                    <span class="popup-value">${event.place}</span>
+                </div>
+                <div class="popup-row">
+                    <span class="popup-label">Глубина:</span>
+                    <span class="popup-value">${event.depth} км</span>
+                </div>
+                <div class="popup-row">
+                    <span class="popup-label">Время:</span>
+                    <span class="popup-value">${event.time}</span>
+                </div>
+            </div>
+        `);
+
+        layerGroups.earthquakes.addLayer(circle);
+
+        // Линия связи от главной точки до эпицентра
+        const line = L.polyline([[mainLat, mainLng], [event.lat, event.lng]], {
+            color: color, weight: 1, opacity: 0.4, dashArray: '5, 5'
+        });
+        connectionLines.push(line);
+        map.addLayer(line);
+    });
+
+    const countEl = document.getElementById('count-earthquakes');
+    if (countEl) countEl.textContent = seismicEvents.length;
+}
+
+// Отображение слоя пожарной опасности
+function showFireRiskLayer(lat, lng, fireRisk) {
+    if (!layerGroups.fireRisk) return;
+    layerGroups.fireRisk.clearLayers();
+
+    const circle = L.circle([lat, lng], {
+        radius: 20000,
+        fillColor: fireRisk.color,
+        color: fireRisk.color,
+        weight: 2,
+        opacity: 0.7,
+        fillOpacity: 0.12
+    });
+
+    circle.bindPopup(`
+        <div class="popup-title">🔥 ПОЖАРНАЯ ОПАСНОСТЬ</div>
+        <div class="popup-section">
+            <div class="popup-row">
+                <span class="popup-label">Уровень:</span>
+                <span class="popup-value" style="color: ${fireRisk.color}">${fireRisk.description}</span>
+            </div>
+            <div class="popup-row">
+                <span class="popup-label">Индекс:</span>
+                <span class="popup-value">${fireRisk.score}/100</span>
+            </div>
+            <div class="popup-row">
+                <span class="popup-label">💡 Рекомендация:</span>
+                <span class="popup-value">${fireRisk.recommendation}</span>
+            </div>
+        </div>
+    `);
+
+    layerGroups.fireRisk.addLayer(circle);
+
+    const countEl = document.getElementById('count-fireRisk');
+    if (countEl) {
+        countEl.textContent = fireRisk.level === 'extreme' ? '⚠️' :
+                              fireRisk.level === 'high' ? '🔴' :
+                              fireRisk.level === 'medium' ? '🟡' : '🟢';
+    }
+}
+
+// Отображение слоя осадков на дорогах
+function showRoadPrecipLayer(lat, lng, precipAnalysis) {
+    if (!layerGroups.roadPrecip) return;
+    layerGroups.roadPrecip.clearLayers();
+
+    const marker = L.circleMarker([lat, lng], {
+        radius: 18,
+        fillColor: precipAnalysis.surfaceColor,
+        color: precipAnalysis.surfaceColor,
+        weight: 3,
+        opacity: 0.9,
+        fillOpacity: 0.25
+    });
+
+    const warningsHtml = [precipAnalysis.visibilityWarning, precipAnalysis.windWarning]
+        .filter(Boolean)
+        .map(w => `<div class="popup-row"><span class="popup-value alert-warning">${w}</span></div>`)
+        .join('');
+
+    const recsHtml = precipAnalysis.recommendations
+        .map(r => `<div class="popup-row"><span class="popup-label">💡</span><span class="popup-value">${r}</span></div>`)
+        .join('');
+
+    marker.bindPopup(`
+        <div class="popup-title">🌧️ ДОРОЖНЫЕ УСЛОВИЯ</div>
+        <div class="popup-section">
+            <div class="popup-row">
+                <span class="popup-label">Покрытие:</span>
+                <span class="popup-value" style="color: ${precipAnalysis.surfaceColor}">${precipAnalysis.surfaceCondition}</span>
+            </div>
+            ${warningsHtml}
+        </div>
+        ${recsHtml ? `<div class="popup-section"><div class="popup-section-title">💡 РЕКОМЕНДАЦИИ ВОДИТЕЛЯМ</div>${recsHtml}</div>` : ''}
+    `);
+
+    layerGroups.roadPrecip.addLayer(marker);
+
+    const countEl = document.getElementById('count-roadPrecip');
+    if (countEl) countEl.textContent = precipAnalysis.speedReduction > 0 ? '⚠️' : '✅';
+}
+
+// Переключение видимости слоя
+function toggleLayer(layerName) {
+    layerStates[layerName] = !layerStates[layerName];
+    const lg = layerGroups[layerName];
+    if (!lg) return;
+    if (layerStates[layerName]) {
+        if (!map.hasLayer(lg)) map.addLayer(lg);
+        // Восстановить линии связи при включении землетрясений
+        if (layerName === 'earthquakes') {
+            connectionLines.forEach(line => { if (!map.hasLayer(line)) map.addLayer(line); });
+        }
+    } else {
+        if (map.hasLayer(lg)) map.removeLayer(lg);
+        if (layerName === 'earthquakes') {
+            connectionLines.forEach(line => { if (map.hasLayer(line)) map.removeLayer(line); });
+        }
+    }
+}
+
+// Обновление всех слоёв для нового местоположения
+function updateLayersForLocation(lat, lng, fullData) {
+    connectionLines.forEach(line => map.removeLayer(line));
+    connectionLines = [];
+
+    showEarthquakeLayer(lat, lng, fullData.seismicEvents || []);
+    showFireRiskLayer(lat, lng, fullData.fireRisk || calculateFireRisk(fullData));
+    showRoadPrecipLayer(lat, lng, fullData.precipAnalysis || getRoadPrecipAnalysis(fullData));
+
+    // Применить текущие состояния видимости слоёв
+    Object.keys(layerStates).forEach(name => {
+        const lg = layerGroups[name];
+        if (!lg) return;
+        if (layerStates[name] && !map.hasLayer(lg)) map.addLayer(lg);
+        else if (!layerStates[name] && map.hasLayer(lg)) map.removeLayer(lg);
+        if (name === 'earthquakes' && !layerStates[name]) {
+            connectionLines.forEach(line => { if (map.hasLayer(line)) map.removeLayer(line); });
+        }
+    });
+}
+
 // Отображение полных данных в боковой панели
 function displayFullInfo(data) {
     const content = document.getElementById('infoContent');
@@ -1722,6 +2050,47 @@ function displayFullInfo(data) {
             </div>`).join('')}
         </div>` : ''}
 
+        ${data.fireRisk ? `
+        <div class="info-section">
+            <div class="section-title">🔥 ПОЖАРНАЯ ОПАСНОСТЬ</div>
+            <div class="info-row">
+                <span class="info-label">Уровень:</span>
+                <span class="info-value" style="color: ${data.fireRisk.color}">${data.fireRisk.description}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Индекс:</span>
+                <span class="info-value">${data.fireRisk.score}/100</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">💡 Рекомендация:</span>
+                <span class="info-value">${data.fireRisk.recommendation}</span>
+            </div>
+        </div>` : ''}
+
+        ${data.precipAnalysis ? `
+        <div class="info-section">
+            <div class="section-title">🌧️ УСЛОВИЯ НА ДОРОГАХ</div>
+            <div class="info-row">
+                <span class="info-label">Покрытие:</span>
+                <span class="info-value">${data.precipAnalysis.surfaceCondition}</span>
+            </div>
+            ${data.precipAnalysis.visibilityWarning ? `
+            <div class="info-row">
+                <span class="info-label">Видимость:</span>
+                <span class="info-value alert-warning">${data.precipAnalysis.visibilityWarning}</span>
+            </div>` : ''}
+            ${data.precipAnalysis.windWarning ? `
+            <div class="info-row">
+                <span class="info-label">Ветер:</span>
+                <span class="info-value alert-warning">${data.precipAnalysis.windWarning}</span>
+            </div>` : ''}
+            ${data.precipAnalysis.recommendations.map(r => `
+            <div class="info-row">
+                <span class="info-label">💡</span>
+                <span class="info-value">${r}</span>
+            </div>`).join('')}
+        </div>` : ''}
+
         <div class="info-section">
             <div class="section-title">🕐 ВРЕМЯ</div>
             <div class="info-row">
@@ -1843,6 +2212,8 @@ function clearMarkers() {
     });
     markers = [];
     markerCount = 0;
+
+    clearLayers();
 
     const content = document.getElementById('infoContent');
     content.innerHTML = `
