@@ -109,6 +109,17 @@
         </div>
     </div>
 
+    <!-- Модальное окно детальной информации о поверхности -->
+    <div id="surfaceDetailModal" class="surface-modal-overlay" onclick="if(event.target===this)closeSurfaceDetailModal()">
+        <div class="surface-modal-content" onclick="event.stopPropagation()">
+            <div class="surface-modal-header">
+                <div class="surface-modal-title">&gt;&gt;&gt; АНАЛИЗ ПОВЕРХНОСТИ ДОРОГИ &lt;&lt;&lt;</div>
+                <button class="surface-modal-close" onclick="closeSurfaceDetailModal()">&times;</button>
+            </div>
+            <div class="surface-modal-body" id="surfaceDetailContent"></div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
     <script src="script.js"></script>
