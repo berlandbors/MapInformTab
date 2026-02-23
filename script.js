@@ -495,6 +495,24 @@ function openModal(data) {
             </div>
         </div>
 
+        ${data.hazards && data.hazards.length > 0 ? `
+        <div class="modal-section hazards-section">
+            <div class="modal-section-title">⚠️ ОПАСНОСТИ <span class="hazards-count">${data.hazards.length}</span></div>
+            ${data.hazards.map(h => `
+            <div class="hazard-item severity-${h.severity}">
+                <div class="hazard-header">
+                    <span class="hazard-icon">${h.icon}</span>
+                    <span class="hazard-title">${escapeHtml(h.title)}</span>
+                    <span class="hazard-badge">${getSeverityName(h.severity)}</span>
+                </div>
+                <div class="hazard-details">
+                    <div class="hazard-value${h.severity === 'critical' ? ' hazard-critical' : ''}">${escapeHtml(h.value)}</div>
+                    <div>${escapeHtml(h.description)}</div>
+                </div>
+                ${h.layerName ? `<button class="hazard-action-btn" data-layer="${escapeHtml(h.layerName)}">▶ Показать на карте</button>` : ''}
+            </div>`).join('')}
+        </div>` : ''}
+
         <div class="modal-section">
             <div class="modal-section-title">${weatherIcon} МЕТЕОДАННЫЕ</div>
             <div class="modal-row">
@@ -525,7 +543,7 @@ function openModal(data) {
             </div>
             <div class="modal-row">
                 <span class="modal-label">Атм. давление:</span>
-                <span class="modal-value">${data.pressure} гПа</span>
+                <span class="modal-value">${data.pressure} гПа${data.pressureAnalysis ? ` / ${data.pressureAnalysis.mmHg} мм рт.ст. — <span style="color: ${data.pressureAnalysis.color}">${data.pressureAnalysis.levelName}</span>` : ''}</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">Видимость:</span>
@@ -536,12 +554,16 @@ function openModal(data) {
                 <span class="modal-value">${data.uvIndex}</span>
             </div>
             <div class="modal-row">
+                <span class="modal-label">Облачность:</span>
+                <span class="modal-value">${data.cloudCover}%</span>
+            </div>
+            <div class="modal-row">
                 <span class="modal-label">Количество осадков:</span>
                 <span class="modal-value">${data.precipitation} мм</span>
             </div>
             <div class="modal-row">
-                <span class="modal-label">Облачность:</span>
-                <span class="modal-value">${data.cloudCover}%</span>
+                <span class="modal-label">Код погоды:</span>
+                <span class="modal-value">${data.weatherCode}</span>
             </div>
         </div>
 
@@ -578,27 +600,7 @@ function openModal(data) {
         </div>
 
         <div class="modal-section">
-            <div class="modal-section-title">🛰️ GPS ДАННЫЕ</div>
-            <div class="modal-row">
-                <span class="modal-label">Широта:</span>
-                <span class="modal-value">${data.latitude}°</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">Долгота:</span>
-                <span class="modal-value">${data.longitude}°</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">Высота над уровнем моря:</span>
-                <span class="modal-value">${data.elevation} м</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">Время сканирования:</span>
-                <span class="modal-value">${data.scanTime}</span>
-            </div>
-        </div>
-
-        <div class="modal-section">
-            <div class="modal-section-title">🌦️ ОСАДКИ И ПРЕДУПРЕЖДЕНИЯ</div>
+            <div class="modal-section-title">🌧️ ОСАДКИ И ПРЕДУПРЕЖДЕНИЯ</div>
             <div class="modal-row">
                 <span class="modal-label">Осадки за час:</span>
                 <span class="modal-value">${data.precipitation} мм</span>
@@ -627,6 +629,62 @@ function openModal(data) {
                 </div>`
             }
         </div>
+
+        ${data.surfaceCondition ? `
+        <div class="modal-section">
+            <div class="modal-section-title">🌆 АНАЛИЗ ПОВЕРХНОСТИ ДОРОГИ</div>
+            <div class="modal-row">
+                <span class="modal-label">Тип/состояние:</span>
+                <span class="modal-value">${data.surfaceCondition.icon} ${escapeHtml(data.surfaceCondition.name)}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Описание:</span>
+                <span class="modal-value">${escapeHtml(data.surfaceCondition.description)}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Покрытие:</span>
+                <span class="modal-value">${data.surfaceCondition.coverage}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Тормозной путь:</span>
+                <span class="modal-value">+${data.surfaceCondition.brakeIncrease}%</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Снижение скорости:</span>
+                <span class="modal-value">-${data.surfaceCondition.speedReduction}%</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">🚶 Для пешеходов:</span>
+                <span class="modal-value">${escapeHtml(data.surfaceCondition.forPedestrians)}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">🚗 Для водителей:</span>
+                <span class="modal-value">${escapeHtml(data.surfaceCondition.forDrivers)}</span>
+            </div>
+            ${data.surfaceCondition.recommendations && data.surfaceCondition.recommendations.length > 0 ?
+                data.surfaceCondition.recommendations.map(r => `
+                <div class="modal-row">
+                    <span class="modal-label">💡</span>
+                    <span class="modal-value">${escapeHtml(r)}</span>
+                </div>`).join('') : ''}
+        </div>` : ''}
+
+        ${data.fireRisk ? `
+        <div class="modal-section">
+            <div class="modal-section-title">🔥 ПОЖАРНАЯ ОПАСНОСТЬ</div>
+            <div class="modal-row">
+                <span class="modal-label">Уровень:</span>
+                <span class="modal-value" style="color: ${data.fireRisk.color}">${data.fireRisk.description}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Индекс:</span>
+                <span class="modal-value">${data.fireRisk.score}/100</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">💡 Рекомендация:</span>
+                <span class="modal-value">${data.fireRisk.recommendation}</span>
+            </div>
+        </div>` : ''}
 
         ${data.seismicEvents && data.seismicEvents.length > 0 ? `
         <div class="modal-section">
@@ -736,6 +794,26 @@ function openModal(data) {
             </div>
         </div>
 
+        <div class="modal-section">
+            <div class="modal-section-title">🛰️ GPS ДАННЫЕ</div>
+            <div class="modal-row">
+                <span class="modal-label">Широта:</span>
+                <span class="modal-value">${data.latitude}°</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Долгота:</span>
+                <span class="modal-value">${data.longitude}°</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Высота над уровнем моря:</span>
+                <span class="modal-value">${data.elevation} м</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Время сканирования:</span>
+                <span class="modal-value">${data.scanTime}</span>
+            </div>
+        </div>
+
         ${data.quality ? `
         <div class="modal-section">
             <div class="modal-section-title">📊 КАЧЕСТВО ДАННЫХ</div>
@@ -762,6 +840,11 @@ function openModal(data) {
         </div>
         ` : ''}
     `;
+
+    // Event delegation for hazard-action buttons in modal
+    body.querySelectorAll('.hazard-action-btn[data-layer]').forEach(btn => {
+        btn.addEventListener('click', () => { focusOnLayer(btn.dataset.layer); closeModal(); });
+    });
 
     overlay.classList.add('active');
     if (isMobile) {
@@ -3238,17 +3321,11 @@ function displayFullInfo(data) {
 
     content.innerHTML = `
         <div class="info-section">
-            <div class="section-title">📍 ТОЧКА #${data.id}</div>
+            <div class="section-title">📍 МЕСТОПОЛОЖЕНИЕ</div>
             ${data.objectName ? `
             <div class="info-row">
                 <span class="info-label">Объект:</span>
                 <span class="info-value">${escapeHtml(data.objectName)}</span>
-            </div>
-            ` : ''}
-            ${data.objectType ? `
-            <div class="info-row">
-                <span class="info-label">Тип:</span>
-                <span class="info-value">${getObjectTypeName(data.objectType)}</span>
             </div>
             ` : ''}
             <div class="info-row">
@@ -3259,14 +3336,27 @@ function displayFullInfo(data) {
                 <span class="info-label">Город:</span>
                 <span class="info-value">${data.city}</span>
             </div>
-            <div class="info-row">
-                <span class="info-label">Район:</span>
-                <span class="info-value">${data.district}</span>
-            </div>
             <div class="gps-coords">
                 LAT: ${data.latitude}° | LNG: ${data.longitude}°
             </div>
         </div>
+
+        ${data.hazards && data.hazards.filter(h => h.severity === 'critical' || h.severity === 'high').length > 0 ? `
+        <div class="info-section hazards-section">
+            <div class="section-title">⚠️ ОПАСНОСТИ <span class="hazards-count">${data.hazards.filter(h => h.severity === 'critical' || h.severity === 'high').length}</span></div>
+            ${data.hazards.filter(h => h.severity === 'critical' || h.severity === 'high').map(h => `
+            <div class="hazard-item severity-${h.severity}">
+                <div class="hazard-header">
+                    <span class="hazard-icon">${h.icon}</span>
+                    <span class="hazard-title">${escapeHtml(h.title)}</span>
+                    <span class="hazard-badge">${getSeverityName(h.severity)}</span>
+                </div>
+                <div class="hazard-details">
+                    <div class="hazard-value${h.severity === 'critical' ? ' hazard-critical' : ''}">${escapeHtml(h.value)}</div>
+                </div>
+                ${h.layerName ? `<button class="hazard-action-btn" data-layer="${escapeHtml(h.layerName)}">▶ Показать на карте</button>` : ''}
+            </div>`).join('')}
+        </div>` : ''}
 
         <div class="info-section">
             <div class="section-title">${weatherIcon} ПОГОДА</div>
@@ -3296,6 +3386,11 @@ function displayFullInfo(data) {
                 <span class="info-label">Давление:</span>
                 <span class="info-value">${data.pressure} гПа</span>
             </div>
+            ${data.precipitation > 0 ? `
+            <div class="info-row">
+                <span class="info-label">Осадки:</span>
+                <span class="info-value">${data.precipitation} мм (${data.precipType})</span>
+            </div>` : ''}
         </div>
 
         <div class="info-section">
@@ -3305,7 +3400,7 @@ function displayFullInfo(data) {
                 <span class="info-value">${data.roadName || 'Н/Д'}</span>
             </div>
             <div class="info-row">
-                <span class="info-label">Тип:</span>
+                <span class="info-label">Тип покрытия:</span>
                 <span class="info-value">${data.roadType}</span>
             </div>
             <div class="info-row">
@@ -3322,32 +3417,63 @@ function displayFullInfo(data) {
             ` : ''}
         </div>
 
+        ${data.precipAnalysis && data.precipAnalysis.speedReduction !== 0 ? `
         <div class="info-section">
-            <div class="section-title">🌦️ ОСАДКИ И ПРЕДУПРЕЖДЕНИЯ</div>
+            <div class="section-title">🌧️ ДОРОЖНЫЕ УСЛОВИЯ</div>
             <div class="info-row">
-                <span class="info-label">Осадки:</span>
-                <span class="info-value">${data.precipitation} мм (${data.precipType})</span>
+                <span class="info-label">Состояние покрытия:</span>
+                <span class="info-value">${data.precipAnalysis.surfaceCondition}</span>
+            </div>
+            ${data.precipAnalysis.visibilityWarning ? `
+            <div class="info-row">
+                <span class="info-label">Видимость:</span>
+                <span class="info-value alert-warning">${data.precipAnalysis.visibilityWarning}</span>
+            </div>` : ''}
+            ${data.precipAnalysis.windWarning ? `
+            <div class="info-row">
+                <span class="info-label">Ветер:</span>
+                <span class="info-value alert-warning">${data.precipAnalysis.windWarning}</span>
+            </div>` : ''}
+            ${data.precipAnalysis.recommendations.slice(0, 3).map(r => `
+            <div class="info-row">
+                <span class="info-label">💡</span>
+                <span class="info-value">${r}</span>
+            </div>`).join('')}
+        </div>` : ''}
+
+        ${data.surfaceCondition ? `
+        <div class="info-section surface-section">
+            <div class="section-title">🌆 СОСТОЯНИЕ ПОВЕРХНОСТИ ДОРОГИ</div>
+            <div class="surface-analysis">
+                <div class="surface-header">
+                    <span class="surface-icon">${data.surfaceCondition.icon}</span>
+                    <span class="surface-title">${escapeHtml(data.surfaceCondition.name)}</span>
+                    ${data.surfaceCondition.severity === 'critical' || data.surfaceCondition.severity === 'high' ? `<span class="surface-danger">${getSeverityName(data.surfaceCondition.severity)}</span>` : ''}
+                </div>
+                <div class="surface-description">${escapeHtml(data.surfaceCondition.description)}</div>
+                <div class="impact-grid">
+                    <div class="impact-item"><span>🚦 Тормоза</span><span>+${data.surfaceCondition.brakeIncrease}%</span></div>
+                    <div class="impact-item"><span>🚗 Скорость</span><span>-${data.surfaceCondition.speedReduction}%</span></div>
+                    <div class="impact-item"><span>📏 Покрытие</span><span>${data.surfaceCondition.coverage}</span></div>
+                </div>
+            </div>
+            <button class="surface-detail-btn" onclick="showDetailedSurfaceModal()">
+                📊 ПОЛНАЯ ИНФОРМАЦИЯ О ПОВЕРХНОСТИ →
+            </button>
+        </div>` : ''}
+
+        ${data.fireRisk && data.fireRisk.level !== 'low' ? `
+        <div class="info-section">
+            <div class="section-title">🔥 ПОЖАРНАЯ ОПАСНОСТЬ</div>
+            <div class="info-row">
+                <span class="info-label">Уровень:</span>
+                <span class="info-value" style="color: ${data.fireRisk.color}">${data.fireRisk.description}</span>
             </div>
             <div class="info-row">
-                <span class="info-label">Вероятность осадков:</span>
-                <span class="info-value">${data.precipProbability ?? 0}%</span>
+                <span class="info-label">💡 Рекомендация:</span>
+                <span class="info-value">${data.fireRisk.recommendation}</span>
             </div>
-            <div class="info-row">
-                <span class="info-label">Часов осадков:</span>
-                <span class="info-value">${data.precipHours ?? 0} ч</span>
-            </div>
-            ${data.weatherAlerts && data.weatherAlerts.length > 0 ?
-                data.weatherAlerts.map(a => `
-                <div class="info-row">
-                    <span class="info-label">${a.icon} ${a.type}:</span>
-                    <span class="info-value alert-${a.level}">${a.description}</span>
-                </div>`).join('') :
-                `<div class="info-row">
-                    <span class="info-label">Предупреждения:</span>
-                    <span class="info-value">Нет активных</span>
-                </div>`
-            }
-        </div>
+        </div>` : ''}
 
         ${data.seismicEvents && data.seismicEvents.length > 0 ? `
         <div class="info-section">
@@ -3365,124 +3491,6 @@ function displayFullInfo(data) {
             </div>`).join('')}
         </div>` : ''}
 
-        ${data.fireRisk ? `
-        <div class="info-section">
-            <div class="section-title">🔥 ПОЖАРНАЯ ОПАСНОСТЬ</div>
-            <div class="info-row">
-                <span class="info-label">Уровень:</span>
-                <span class="info-value" style="color: ${data.fireRisk.color}">${data.fireRisk.description}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Индекс:</span>
-                <span class="info-value">${data.fireRisk.score}/100</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">💡 Рекомендация:</span>
-                <span class="info-value">${data.fireRisk.recommendation}</span>
-            </div>
-        </div>` : ''}
-
-        ${data.precipAnalysis ? `
-        <div class="info-section">
-            <div class="section-title">🌧️ УСЛОВИЯ НА ДОРОГАХ</div>
-            <div class="info-row">
-                <span class="info-label">Покрытие:</span>
-                <span class="info-value">${data.precipAnalysis.surfaceCondition}</span>
-            </div>
-            ${data.precipAnalysis.visibilityWarning ? `
-            <div class="info-row">
-                <span class="info-label">Видимость:</span>
-                <span class="info-value alert-warning">${data.precipAnalysis.visibilityWarning}</span>
-            </div>` : ''}
-            ${data.precipAnalysis.windWarning ? `
-            <div class="info-row">
-                <span class="info-label">Ветер:</span>
-                <span class="info-value alert-warning">${data.precipAnalysis.windWarning}</span>
-            </div>` : ''}
-            ${data.precipAnalysis.recommendations.map(r => `
-            <div class="info-row">
-                <span class="info-label">💡</span>
-                <span class="info-value">${r}</span>
-            </div>`).join('')}
-        </div>` : ''}
-
-        ${data.pressureAnalysis ? `
-        <div class="info-section pressure-analysis">
-            <div class="section-title">🌡️ АТМОСФЕРНОЕ ДАВЛЕНИЕ</div>
-            <div class="pressure-main">
-                <div class="pressure-value-large">${data.pressureAnalysis.mmHg} мм рт.ст.</div>
-                <div class="pressure-level" style="color: ${data.pressureAnalysis.color}">${data.pressureAnalysis.levelName}</div>
-                <div class="pressure-trend">${data.pressureAnalysis.trendIcon} ${data.pressureAnalysis.trend} &nbsp;|&nbsp; ${data.pressure} гПа</div>
-            </div>
-            ${data.pressureAnalysis.healthEffects.length > 0 ? `
-            <div class="pressure-subsection">
-                <div class="pressure-subsection-title">🏥 Влияние на здоровье:</div>
-                ${data.pressureAnalysis.healthEffects.map(e => `<div class="pressure-effect">• ${escapeHtml(e)}</div>`).join('')}
-            </div>` : ''}
-            <div class="weather-forecast">
-                <span class="forecast-icon">🔮</span> ${escapeHtml(data.pressureAnalysis.weatherForecast)}
-            </div>
-        </div>` : ''}
-
-        <div class="info-section hazards-section">
-            <div class="section-title">⚠️ ОБНАРУЖЕННЫЕ ОПАСНОСТИ
-                ${data.hazards && data.hazards.length > 0 ? `<span class="hazards-count">${data.hazards.length}</span>` : ''}
-            </div>
-            ${data.hazards && data.hazards.length > 0 ? data.hazards.map(h => `
-            <div class="hazard-item severity-${h.severity}">
-                <div class="hazard-header">
-                    <span class="hazard-icon">${h.icon}</span>
-                    <span class="hazard-title">${escapeHtml(h.title)}</span>
-                    <span class="hazard-badge">${getSeverityName(h.severity)}</span>
-                </div>
-                <div class="hazard-details">
-                    <div class="hazard-value${h.severity === 'critical' ? ' hazard-critical' : ''}">${escapeHtml(h.value)}</div>
-                    <div>${escapeHtml(h.description)}</div>
-                </div>
-                ${h.layerName ? `<button class="hazard-action-btn" data-layer="${escapeHtml(h.layerName)}">▶ Показать на карте</button>` : ''}
-            </div>`).join('') : `
-            <div class="no-hazards">
-                <span class="no-hazards-icon">✅</span>
-                <div>Опасностей не обнаружено</div>
-            </div>`}
-        </div>
-
-        ${data.surfaceCondition ? `
-        <div class="info-section surface-section">
-            <div class="section-title">🛣️ СОСТОЯНИЕ ПОВЕРХНОСТИ</div>
-            <div class="surface-analysis">
-                <div class="surface-header">
-                    <span class="surface-icon">${data.surfaceCondition.icon}</span>
-                    <span class="surface-title">${escapeHtml(data.surfaceCondition.name)}</span>
-                    ${data.surfaceCondition.severity === 'critical' || data.surfaceCondition.severity === 'high' ? `<span class="surface-danger">${getSeverityName(data.surfaceCondition.severity)}</span>` : ''}
-                </div>
-                <div class="surface-description">${escapeHtml(data.surfaceCondition.description)}</div>
-                <div class="surface-subsection">
-                    <div class="accumulated-info">
-                        <div class="accumulated-row"><span>🌧️ Осадки 24ч:</span><span>${data.surfaceCondition.accRainMm ?? 0} мм</span></div>
-                        <div class="accumulated-row"><span>❄️ Снег 24ч:</span><span>${data.surfaceCondition.accSnowCm ?? 0} см</span></div>
-                        <div class="accumulated-row"><span>🌡️ Темп.:</span><span>${data.surfaceCondition.currentTemp ?? 'Н/Д'}°C</span></div>
-                        <div class="accumulated-row"><span>⏱️ Часов осадков:</span><span>${data.surfaceCondition.continuousRainHours ?? 0} ч</span></div>
-                    </div>
-                </div>
-                <div class="impact-grid">
-                    <div class="impact-item"><span>🚦 Тормоза</span><span>+${data.surfaceCondition.brakeIncrease}%</span></div>
-                    <div class="impact-item"><span>🚗 Скорость</span><span>-${data.surfaceCondition.speedReduction}%</span></div>
-                    <div class="impact-item"><span>📏 Покрытие</span><span>${data.surfaceCondition.coverage}</span></div>
-                </div>
-                <div class="surface-effect">🚶 ${escapeHtml(data.surfaceCondition.forPedestrians)}</div>
-                <div class="surface-effect">🚗 ${escapeHtml(data.surfaceCondition.forDrivers)}</div>
-                ${data.surfaceCondition.recommendations && data.surfaceCondition.recommendations.length > 0 ? `
-                <div class="surface-subsection">
-                    <div class="surface-subsection-title">💡 Рекомендации:</div>
-                    ${data.surfaceCondition.recommendations.map(r => `<div class="surface-effect">• ${escapeHtml(r)}</div>`).join('')}
-                </div>` : ''}
-            </div>
-            <button class="surface-detail-btn" onclick="showDetailedSurfaceModal()">
-                📊 ПОЛНАЯ ИНФОРМАЦИЯ О ПОВЕРХНОСТИ →
-            </button>
-        </div>` : ''}
-
         <div class="info-section">
             <div class="section-title">🕐 ВРЕМЯ</div>
             <div class="info-row">
@@ -3490,62 +3498,37 @@ function displayFullInfo(data) {
                 <span class="info-value">${data.timezone ? getCurrentTimeForTimezone(data.timezone) : data.localTime || 'Н/Д'}</span>
             </div>
             <div class="info-row">
-                <span class="info-label">Часовой пояс:</span>
-                <span class="info-value">${data.timezone || 'Н/Д'}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">UTC:</span>
-                <span class="info-value">${data.utcOffset || 'Н/Д'}</span>
-            </div>
-            ${data.usesDST ? `
-            <div class="info-row">
-                <span class="info-label">Тип:</span>
-                <span class="info-value">
-                    ${data.currentSeason === 'summer' ? '☀️ Летнее' : '❄️ Зимнее'}
-                </span>
-            </div>
-            ` : ''}
-        </div>
-
-        <div class="info-section">
-            <div class="section-title">🌦️ АСТРОНОМИЯ</div>
-            <div class="info-row">
-                <span class="info-label">🌅 Восход солнца:</span>
+                <span class="info-label">🌅 Восход:</span>
                 <span class="info-value">${data.sunriseTime || 'Н/Д'}</span>
             </div>
             <div class="info-row">
-                <span class="info-label">🌇 Закат солнца:</span>
+                <span class="info-label">🌇 Закат:</span>
                 <span class="info-value">${data.sunsetTime || 'Н/Д'}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Световой день:</span>
-                <span class="info-value">${data.dayLength || 'Н/Д'}</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Фаза дня:</span>
                 <span class="info-value">${data.dayPhase || 'Н/Д'}</span>
             </div>
-            <div class="info-row">
-                <span class="info-label">🌙 Восход луны:</span>
-                <span class="info-value">${data.moonriseTime || 'Н/Д'}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">🌙 Закат луны:</span>
-                <span class="info-value">${data.moonsetTime || 'Н/Д'}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Фаза луны:</span>
-                <span class="info-value">${data.moonPhase || 'Н/Д'}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">Освещённость луны:</span>
-                <span class="info-value">${data.moonIllumination ?? 0}%</span>
-            </div>
         </div>
 
-        <button class="view-details-btn" onclick="openModalById(${markerIndex})">
-            [ 📋 ПОЛНАЯ ИНФОРМАЦИЯ ]
-        </button>
+        ${data.quality ? `
+        <div class="info-section">
+            <div class="section-title">📊 КАЧЕСТВО ДАННЫХ</div>
+            <div class="quality-indicator ${getQualityColorClass(data.quality.grade)}">
+                <div class="quality-stars">${'⭐'.repeat(data.quality.stars)}${'☆'.repeat(5 - data.quality.stars)}</div>
+                <div class="quality-label">${getQualityLabel(data.quality.grade)} (${data.quality.score}/100)</div>
+                ${data.quality.score < 80 ? `
+                <button class="rescan-button-small" onclick="rescanCurrentLocation()">
+                    🔄 Пересканировать
+                </button>` : ''}
+            </div>
+        </div>` : ''}
+
+        <div class="info-section">
+            <button class="control-btn" onclick="openModalById(${markerIndex})" style="width: 100%; margin-top: 10px;">
+                [ 📋 ОТКРЫТЬ ПОЛНУЮ ИНФОРМАЦИЮ ]
+            </button>
+        </div>
     `;
 
     // Event delegation for hazard-action buttons (avoids inline onclick with dynamic data)
