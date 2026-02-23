@@ -8,13 +8,45 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+    <!-- Мобильный переключатель табов (только для смартфонов в портретной ориентации) -->
+    <div id="mobileTabSwitcher" class="mobile-tab-switcher" style="display: none;">
+        <button id="tabMap" class="tab-button active" data-tab="map">
+            🗺️ Карта
+        </button>
+        <button id="tabInfo" class="tab-button" data-tab="info">
+            📊 Информация
+        </button>
+    </div>
+
+    <!-- Уведомление для мобильных устройств -->
+    <div id="mobileNotification" class="mobile-notification" style="display: none;">
+        <div class="notification-content">
+            <button class="notification-close" id="closeNotification">✕</button>
+            <div class="notification-icon">💡</div>
+            <div class="notification-title">Рекомендация для лучшего опыта</div>
+            <div class="notification-text">
+                Это приложение оптимизировано для работы на:
+                <ul>
+                    <li>💻 Компьютере</li>
+                    <li>📱 Планшете</li>
+                    <li>🔄 Горизонтальном режиме экрана</li>
+                </ul>
+                Используйте переключатель <strong>Карта/Информация</strong> для навигации
+            </div>
+            <label class="notification-checkbox">
+                <input type="checkbox" id="dontShowAgain">
+                Больше не показывать
+            </label>
+        </div>
+    </div>
+
     <div class="container">
         <div class="map-container">
             <div class="scanline"></div>
             <div id="map"></div>
         </div>
         
-        <div class="info-panel">
+        <div class="info-panel" id="info-panel">
             <div class="info-header">
                 <h1>&gt;&gt;&gt; СИСТЕМА МОНИТОРИНГА &lt;&lt;&lt;</h1>
             </div>
