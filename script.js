@@ -6,6 +6,25 @@ let searchTimeout = null;
 // Определение мобильного устройства
 const isMobile = window.matchMedia("(max-width: 768px)").matches;
 
+function getDeviceType() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const isPortrait = height > width;
+
+    if (width <= 768 && isPortrait) {
+        return 'smartphone-portrait';
+    } else if (width <= 768 && !isPortrait) {
+        return 'smartphone-landscape';
+    } else if (width <= 1024) {
+        return 'tablet';
+    } else {
+        return 'desktop';
+    }
+}
+
+let deviceType = getDeviceType();
+let activeMobileTab = 'map';
+
 // Инициализация карты
 function initMap() {
     const initialZoom = isMobile ? 11 : 12;
@@ -54,6 +73,11 @@ async function scanLocation(lat, lng) {
 
         createMarker(lat, lng, fullData);
         displayFullInfo(fullData);
+
+        // Автоматически переключить на таб "Информация" в мобильном режиме
+        if (deviceType === 'smartphone-portrait') {
+            switchMobileTab('info');
+        }
 
     } catch (error) {
         console.error('Ошибка сканирования:', error);
@@ -1617,3 +1641,137 @@ setInterval(updateTimestamp, 1000);
 
 // Запуск автоматического обновления времени каждую секунду
 setInterval(updateAllMarkerTimes, 1000);
+
+// Инициализация мобильного режима
+function initMobileMode() {
+    deviceType = getDeviceType();
+
+    if (deviceType === 'smartphone-portrait') {
+        showMobileInterface();
+        checkAndShowNotification();
+
+        const savedTab = localStorage.getItem('mobile_active_tab');
+        if (savedTab) {
+            activeMobileTab = savedTab;
+            switchMobileTab(savedTab);
+        }
+    } else {
+        hideMobileInterface();
+    }
+}
+
+function showMobileInterface() {
+    const switcher = document.getElementById('mobileTabSwitcher');
+    if (switcher) {
+        switcher.style.display = 'flex';
+    }
+}
+
+function hideMobileInterface() {
+    const switcher = document.getElementById('mobileTabSwitcher');
+    const notification = document.getElementById('mobileNotification');
+
+    if (switcher) {
+        switcher.style.display = 'none';
+    }
+    if (notification) {
+        notification.style.display = 'none';
+    }
+
+    const mapEl = document.getElementById('map');
+    const infoPanel = document.getElementById('info-panel');
+
+    if (mapEl) {
+        mapEl.classList.remove('hidden');
+    }
+    if (infoPanel) {
+        infoPanel.classList.remove('active');
+    }
+}
+
+function checkAndShowNotification() {
+    const dismissed = localStorage.getItem('mobile_notification_dismissed');
+
+    if (!dismissed) {
+        const notification = document.getElementById('mobileNotification');
+        if (notification) {
+            notification.style.display = 'flex';
+        }
+    }
+}
+
+function switchMobileTab(tab) {
+    activeMobileTab = tab;
+    localStorage.setItem('mobile_active_tab', tab);
+
+    const mapEl = document.getElementById('map');
+    const infoPanel = document.getElementById('info-panel');
+    const tabMap = document.getElementById('tabMap');
+    const tabInfo = document.getElementById('tabInfo');
+
+    if (tab === 'map') {
+        mapEl.classList.remove('hidden');
+        infoPanel.classList.remove('active');
+        tabMap.classList.add('active');
+        tabInfo.classList.remove('active');
+    } else {
+        mapEl.classList.add('hidden');
+        infoPanel.classList.add('active');
+        tabMap.classList.remove('active');
+        tabInfo.classList.add('active');
+    }
+
+    if (tab === 'map' && map) {
+        setTimeout(() => {
+            map.invalidateSize();
+        }, 300);
+    }
+}
+
+function setupMobileEventListeners() {
+    const tabMap = document.getElementById('tabMap');
+    const tabInfo = document.getElementById('tabInfo');
+
+    if (tabMap) {
+        tabMap.addEventListener('click', () => switchMobileTab('map'));
+    }
+    if (tabInfo) {
+        tabInfo.addEventListener('click', () => switchMobileTab('info'));
+    }
+
+    const closeBtn = document.getElementById('closeNotification');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            const dontShow = document.getElementById('dontShowAgain');
+            if (dontShow && dontShow.checked) {
+                localStorage.setItem('mobile_notification_dismissed', 'true');
+            }
+
+            const notification = document.getElementById('mobileNotification');
+            if (notification) {
+                notification.style.display = 'none';
+            }
+        });
+    }
+
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            const newDeviceType = getDeviceType();
+            if (newDeviceType !== deviceType) {
+                deviceType = newDeviceType;
+                initMobileMode();
+            }
+        }, 200);
+    });
+
+    window.addEventListener('orientationchange', () => {
+        setTimeout(() => {
+            initMobileMode();
+        }, 200);
+    });
+}
+
+setupMobileEventListeners();
+initMobileMode();
