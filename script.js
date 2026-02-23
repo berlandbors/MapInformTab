@@ -234,6 +234,14 @@ function createPopupContent(data) {
                 <span class="popup-label">UTC смещение:</span>
                 <span class="popup-value">${data.utcOffset || 'Н/Д'}</span>
             </div>
+            ${data.usesDST ? `
+            <div class="popup-row">
+                <span class="popup-label">Тип времени:</span>
+                <span class="popup-value">
+                    ${data.currentSeason === 'summer' ? '☀️ Летнее (DST)' : '❄️ Зимнее (стандартное)'}
+                </span>
+            </div>
+            ` : ''}
         </div>
 
         <button class="popup-details-btn" onclick="openModalById(${markerIndex})">
@@ -482,13 +490,32 @@ function openModal(data) {
                 <span class="modal-value">${data.timezone || 'Н/Д'}</span>
             </div>
             <div class="modal-row">
-                <span class="modal-label">Смещение UTC:</span>
+                <span class="modal-label">Текущее смещение UTC:</span>
                 <span class="modal-value">${data.utcOffset || 'Н/Д'}</span>
             </div>
+            ${data.usesDST ? `
             <div class="modal-row">
-                <span class="modal-label">Летнее время (DST):</span>
-                <span class="modal-value">${data.isDST ? '✓ Активно' : '✗ Не используется'}</span>
+                <span class="modal-label">Тип времени:</span>
+                <span class="modal-value">
+                    ${data.currentSeason === 'summer' 
+                        ? '☀️ Летнее время (DST)' 
+                        : '❄️ Зимнее время (стандартное)'}
+                </span>
             </div>
+            <div class="modal-row">
+                <span class="modal-label">Зимнее время:</span>
+                <span class="modal-value">UTC${data.winterOffset}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Летнее время:</span>
+                <span class="modal-value">UTC${data.summerOffset}</span>
+            </div>
+            ` : `
+            <div class="modal-row">
+                <span class="modal-label">Переход на летнее время:</span>
+                <span class="modal-value">Не используется</span>
+            </div>
+            `}
             ${data.dstStart ? `
             <div class="modal-row">
                 <span class="modal-label">Следующий перевод:</span>
@@ -1044,12 +1071,33 @@ async function getTimezoneData(lat, lng) {
         // DST активен, если текущий offset больше стандартного
         const isDST = offsetMinutes > standardOffset;
 
+        // Определяем зимнее и летнее смещения
+        const winterOffset = Math.min(janOffset, julOffset);
+        const summerOffset = Math.max(janOffset, julOffset);
+        // Считаем, что DST используется, если разница между зимним и летним смещением >= 30 минут
+        const usesDST = Math.abs(summerOffset - winterOffset) >= 30;
+
+        // Функция форматирования смещения
+        const formatOffsetString = (minutes) => {
+            const hours = Math.floor(Math.abs(minutes) / 60);
+            const mins = Math.abs(minutes) % 60;
+            const sign = minutes >= 0 ? '+' : '-';
+            return `${sign}${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+        };
+
+        const winterOffsetStr = formatOffsetString(winterOffset);
+        const summerOffsetStr = formatOffsetString(summerOffset);
+
         const dstStart = data.dstStart ?? data.dstInterval?.dstStart ?? data.dstInterval?.dstNextStart ?? null;
 
         return {
             timezone: timezoneName,
             utcOffset,
             isDST,
+            usesDST,
+            winterOffset: winterOffsetStr,
+            summerOffset: summerOffsetStr,
+            currentSeason: usesDST ? (isDST ? 'summer' : 'winter') : null,
             dstStart
         };
     } catch (error) {
@@ -1058,6 +1106,10 @@ async function getTimezoneData(lat, lng) {
             timezone: 'Н/Д',
             utcOffset: 'Н/Д',
             isDST: false,
+            usesDST: false,
+            winterOffset: null,
+            summerOffset: null,
+            currentSeason: 'winter',
             dstStart: null
         };
     }
@@ -1421,6 +1473,14 @@ function displayFullInfo(data) {
                 <span class="info-label">UTC:</span>
                 <span class="info-value">${data.utcOffset || 'Н/Д'}</span>
             </div>
+            ${data.usesDST ? `
+            <div class="info-row">
+                <span class="info-label">Тип:</span>
+                <span class="info-value">
+                    ${data.currentSeason === 'summer' ? '☀️ Летнее' : '❄️ Зимнее'}
+                </span>
+            </div>
+            ` : ''}
         </div>
 
         <div class="info-section">
