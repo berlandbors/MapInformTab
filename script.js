@@ -8,6 +8,9 @@ let layerGroups = {};
 let connectionLines = [];
 let layerStates = { earthquakes: true, fireRisk: true, roadPrecip: true };
 
+// Предыдущее значение давления для определения тенденции
+let previousPressure = null;
+
 // Определение мобильного устройства
 const isMobile = window.matchMedia("(max-width: 768px)").matches;
 
@@ -167,6 +170,23 @@ async function scanLocation(lat, lng, isRescan = false) {
         // Расчёт пожарной опасности и дорожных условий
         fullData.fireRisk = calculateFireRisk(fullData);
         fullData.precipAnalysis = getRoadPrecipAnalysis(fullData);
+
+        // Анализ давления
+        fullData.pressureAnalysis = analyzePressure(fullData.pressure);
+        console.log(`📊 Анализ давления: ${fullData.pressure} гПа (${fullData.pressureAnalysis.levelName}, ${fullData.pressureAnalysis.trend})`);
+
+        // Анализ состояния поверхности (асинхронно через Open-Meteo API)
+        fullData.surfaceCondition = await analyzeSurfaceCondition(lat, lng, weatherData);
+
+        // Сбор опасностей
+        fullData.hazards = collectHazards(fullData);
+        if (fullData.hazards.length > 0) {
+            console.log(`⚠️ Обнаружено опасностей: ${fullData.hazards.length}`);
+            fullData.hazards.forEach(h => {
+                const dot = h.severity === 'critical' ? '🔴' : h.severity === 'high' ? '🟠' : '🟡';
+                console.log(`  ${dot} ${h.title} (${h.severity})`);
+            });
+        }
 
         console.log(`📊 Качество данных: ${quality.score}/100 (${getQualityLabel(quality.grade)})`);
 
@@ -1715,6 +1735,516 @@ function getRoadPrecipAnalysis(data) {
     return { surfaceCondition, surfaceColor, speedReduction, visibilityWarning, windWarning, recommendations };
 }
 
+// Название уровня серьёзности опасности
+function getSeverityName(severity) {
+    const names = { critical: 'КРИТИЧЕСКИЙ', high: 'ВЫСОКИЙ', moderate: 'СРЕДНИЙ', low: 'НИЗКИЙ' };
+    return names[severity] || severity.toUpperCase();
+}
+
+// Коэффициент перевода гПа → мм рт. ст.
+const HPA_TO_MMHG = 0.750062;
+
+// Детальный анализ атмосферного давления
+function analyzePressure(pressure) {
+    if (typeof pressure !== 'number') {
+        return {
+            level: 'unknown', levelName: 'Нет данных', trend: 'Нет данных',
+            trendIcon: '—', mmHg: 'Н/Д', color: '#888888',
+            healthEffects: [], weatherForecast: 'Нет данных'
+        };
+    }
+
+    let level, levelName, color;
+    if (pressure < 980) {
+        level = 'very_low'; levelName = 'Очень низкое'; color = '#ff4444';
+    } else if (pressure < 1000) {
+        level = 'low'; levelName = 'Низкое'; color = '#ff6600';
+    } else if (pressure < 1020) {
+        level = 'normal'; levelName = 'Нормальное'; color = '#00ff00';
+    } else if (pressure < 1040) {
+        level = 'high'; levelName = 'Повышенное'; color = '#ffaa00';
+    } else {
+        level = 'very_high'; levelName = 'Очень высокое'; color = '#ff4444';
+    }
+
+    let trend, trendIcon;
+    if (previousPressure === null || Math.abs(pressure - previousPressure) < 1) {
+        trend = 'Стабильно'; trendIcon = '→';
+    } else if (pressure > previousPressure) {
+        trend = 'Растет'; trendIcon = '↑';
+    } else {
+        trend = 'Падает'; trendIcon = '↓';
+    }
+    previousPressure = pressure;
+
+    const mmHg = Math.round(pressure * HPA_TO_MMHG);
+
+    return {
+        level, levelName, trend, trendIcon, mmHg, color,
+        healthEffects: getPressureHealthEffects(level),
+        weatherForecast: getPressureWeatherForecast(level, trend)
+    };
+}
+
+// Влияние давления на здоровье
+function getPressureHealthEffects(level) {
+    const effects = {
+        very_low: [
+            'Головная боль и мигрень',
+            'Суставные боли у метеозависимых',
+            'Снижение артериального давления',
+            'Усталость и сонливость'
+        ],
+        low: [
+            'Возможна головная боль',
+            'Снижение концентрации',
+            'Ухудшение самочувствия у гипотоников'
+        ],
+        normal: [
+            'Комфортные условия',
+            'Нет негативного воздействия'
+        ],
+        high: [
+            'Повышение артериального давления',
+            'Риск для гипертоников',
+            'Возможна головная боль'
+        ],
+        very_high: [
+            'Значительное повышение АД',
+            'Высокий риск для сердечно-сосудистых',
+            'Сильная головная боль',
+            'Ухудшение при заболеваниях дыхательных путей'
+        ]
+    };
+    return effects[level] || [];
+}
+
+// Прогноз погоды на основе давления
+function getPressureWeatherForecast(level, trend) {
+    if (level === 'very_low' || (level === 'low' && trend === 'Падает')) {
+        return '⛈️ Ожидается ухудшение погоды, возможны осадки и штормовой ветер';
+    } else if (level === 'low' && trend === 'Растет') {
+        return '🌤️ Погода начинает улучшаться';
+    } else if (level === 'low') {
+        return '🌧️ Возможны осадки, облачная погода';
+    } else if (level === 'normal' && trend === 'Растет') {
+        return '☀️ Погода улучшается, ожидается прояснение';
+    } else if (level === 'normal' && trend === 'Падает') {
+        return '🌥️ Возможно ухудшение погоды';
+    } else if (level === 'normal') {
+        return '⛅ Умеренная погода, без резких изменений';
+    } else if ((level === 'high' || level === 'very_high') && trend === 'Падает') {
+        return '🌥️ Ожидается смена погоды, возможны осадки';
+    } else if (level === 'high' || level === 'very_high') {
+        return '☀️ Ясная, солнечная погода';
+    }
+    return 'Нет прогноза';
+}
+
+// Сбор всех обнаруженных опасностей
+function collectHazards(fullData) {
+    const hazards = [];
+
+    // 1. Сейсмическая активность
+    if (fullData.seismicEvents && fullData.seismicEvents.length > 0) {
+        const maxMag = Math.max(...fullData.seismicEvents.map(e => parseFloat(e.magnitude) || 0));
+        const severity = maxMag >= 6 ? 'critical' : maxMag >= 4 ? 'high' : 'moderate';
+        hazards.push({
+            id: 'earthquakes', icon: '🌍',
+            title: 'Сейсмическая активность', severity,
+            value: `M${maxMag.toFixed(1)}`,
+            description: `${fullData.seismicEvents.length} событий в радиусе 500 км`,
+            layerName: 'earthquakes'
+        });
+    }
+
+    // 2. Пожарная опасность
+    if (fullData.fireRisk && (fullData.fireRisk.level === 'extreme' || fullData.fireRisk.level === 'high')) {
+        hazards.push({
+            id: 'fireRisk', icon: '🔥',
+            title: 'Пожарная опасность',
+            severity: fullData.fireRisk.level === 'extreme' ? 'critical' : 'high',
+            value: fullData.fireRisk.description,
+            description: fullData.fireRisk.recommendation,
+            layerName: 'fireRisk'
+        });
+    }
+
+    // 3. Опасные осадки на дорогах
+    if (fullData.precipAnalysis && fullData.precipAnalysis.speedReduction >= 30) {
+        hazards.push({
+            id: 'roadPrecip', icon: '🌧️',
+            title: 'Опасные осадки на дорогах',
+            severity: fullData.precipAnalysis.speedReduction >= 50 ? 'critical' : 'high',
+            value: fullData.precipAnalysis.surfaceCondition,
+            description: `Снижение скорости на ${fullData.precipAnalysis.speedReduction}%`,
+            layerName: 'roadPrecip'
+        });
+    } else if (fullData.precipAnalysis && fullData.precipAnalysis.speedReduction > 0) {
+        hazards.push({
+            id: 'roadPrecip', icon: '🌧️',
+            title: 'Осадки на дорогах', severity: 'moderate',
+            value: fullData.precipAnalysis.surfaceCondition,
+            description: `Снижение скорости на ${fullData.precipAnalysis.speedReduction}%`,
+            layerName: 'roadPrecip'
+        });
+    }
+
+    // 4. Экстремальные температуры
+    const temp = typeof fullData.temp === 'number' ? fullData.temp : null;
+    if (temp !== null) {
+        if (temp >= 40) {
+            hazards.push({
+                id: 'temp_high', icon: '🌡️', title: 'Экстремальная жара', severity: 'critical',
+                value: `${temp}°C`, description: 'Опасность теплового удара, ограничьте пребывание на улице', layerName: null
+            });
+        } else if (temp >= 35) {
+            hazards.push({
+                id: 'temp_high', icon: '🌡️', title: 'Сильная жара', severity: 'high',
+                value: `${temp}°C`, description: 'Высокий риск теплового стресса', layerName: null
+            });
+        } else if (temp <= -30) {
+            hazards.push({
+                id: 'temp_low', icon: '🥶', title: 'Экстремальный мороз', severity: 'critical',
+                value: `${temp}°C`, description: 'Опасность обморожения, ограничьте пребывание на улице', layerName: null
+            });
+        } else if (temp <= -20) {
+            hazards.push({
+                id: 'temp_low', icon: '🥶', title: 'Сильный мороз', severity: 'high',
+                value: `${temp}°C`, description: 'Риск обморожения при длительном пребывании на улице', layerName: null
+            });
+        }
+    }
+
+    // 5. Сильный ветер
+    const windSpeed = typeof fullData.windSpeed === 'number' ? fullData.windSpeed : null;
+    if (windSpeed !== null) {
+        if (windSpeed > 25) {
+            hazards.push({
+                id: 'wind', icon: '💨', title: 'Ураганный ветер', severity: 'critical',
+                value: `${windSpeed} м/с`, description: 'Опасен для жизни, возможны разрушения', layerName: null
+            });
+        } else if (windSpeed > 15) {
+            hazards.push({
+                id: 'wind', icon: '💨', title: 'Сильный ветер', severity: 'high',
+                value: `${windSpeed} м/с`,
+                description: (fullData.precipAnalysis && fullData.precipAnalysis.windWarning) || 'Опасность для высокого транспорта',
+                layerName: null
+            });
+        }
+    }
+
+    // 6. Ограниченная видимость
+    const visibility = typeof fullData.visibility === 'number' ? fullData.visibility : null;
+    const weatherCode = fullData.weatherCode || 0;
+    if (visibility !== null && (visibility < 0.5 || weatherCode === 45 || weatherCode === 48)) {
+        hazards.push({
+            id: 'visibility', icon: '🌫️', title: 'Ограниченная видимость', severity: 'high',
+            value: visibility < 1 ? `${Math.round(visibility * 1000)} м` : `${visibility} км`,
+            description: 'Опасность при вождении, включите противотуманные фары', layerName: null
+        });
+    } else if (visibility !== null && visibility < 2) {
+        hazards.push({
+            id: 'visibility', icon: '🌫️', title: 'Плохая видимость', severity: 'moderate',
+            value: `${visibility} км`, description: 'Снизьте скорость, будьте внимательны', layerName: null
+        });
+    }
+
+    // 7. Аномальное атмосферное давление
+    if (fullData.pressureAnalysis && (fullData.pressureAnalysis.level === 'very_low' || fullData.pressureAnalysis.level === 'very_high')) {
+        hazards.push({
+            id: 'pressure', icon: '🌡️', title: 'Аномальное давление', severity: 'moderate',
+            value: `${fullData.pressure} гПа`,
+            description: `${fullData.pressureAnalysis.levelName} — ${fullData.pressureAnalysis.healthEffects[0] || ''}`,
+            layerName: null
+        });
+    }
+
+    const severityOrder = { critical: 0, high: 1, moderate: 2, low: 3 };
+    hazards.sort((a, b) => (severityOrder[a.severity] ?? 99) - (severityOrder[b.severity] ?? 99));
+    return hazards;
+}
+
+// Фокус карты на слое
+function focusOnLayer(layerName) {
+    if (deviceType === 'smartphone-portrait') {
+        switchMobileTab('map');
+    }
+    if (!layerStates[layerName]) {
+        toggleLayer(layerName);
+        const cb = document.getElementById(`toggle-${layerName}`);
+        if (cb) cb.checked = true;
+    }
+    const lg = layerGroups[layerName];
+    if (lg) {
+        try {
+            const bounds = lg.getBounds();
+            if (bounds.isValid()) {
+                map.fitBounds(bounds, { padding: [50, 50] });
+            }
+        } catch (e) {
+            // Layer may not have bounds (e.g., single point marker) — not an error
+            console.debug('focusOnLayer: no bounds for layer', layerName, e.message);
+        }
+    }
+}
+
+// Анализ состояния поверхности через Open-Meteo API (данные за 24 часа)
+async function analyzeSurfaceCondition(lat, lng, weatherData) {
+    console.log('🛣️ Анализ состояния поверхности...');
+    try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&hourly=precipitation,rain,snowfall,temperature_2m,weathercode&past_hours=24&forecast_hours=1`;
+        const response = await fetch(url);
+        const data = await response.json();
+        const hourly = data.hourly;
+
+        if (!hourly) {
+            return getFallbackSurfaceCondition(weatherData);
+        }
+
+        const precipitation = hourly.precipitation || [];
+        const rain = hourly.rain || [];
+        const snowfall = hourly.snowfall || [];
+        const temps = hourly.temperature_2m || [];
+        const codes = hourly.weathercode || [];
+
+        // past_hours=24 + forecast_hours=1 → array has 25 items; skip the last (forecast) hour
+        const hours24 = Math.min(precipitation.length - 1, 24);
+        let accRain = 0, accSnow = 0;
+        for (let i = 0; i < hours24; i++) {
+            accRain += rain[i] || 0;
+            accSnow += snowfall[i] || 0;
+        }
+
+        const currentTemp = hours24 > 0 && temps[hours24 - 1] !== undefined
+            ? temps[hours24 - 1]
+            : (typeof weatherData.temp === 'number' ? weatherData.temp : 10);
+
+        let continuousRainHours = 0;
+        for (let i = hours24 - 1; i >= 0; i--) {
+            if ((precipitation[i] || 0) > 0.1) {
+                continuousRainHours++;
+            } else {
+                break;
+            }
+        }
+
+        let hadThaw = false, hadFreeze = false;
+        for (let i = 0; i < hours24; i++) {
+            const t = temps[i] !== undefined ? temps[i] : currentTemp;
+            if (t > 2) hadThaw = true;
+            if (t < -2) hadFreeze = true;
+        }
+
+        const currentCode = codes[hours24 - 1] !== undefined ? codes[hours24 - 1] : (weatherData.weatherCode || 0);
+
+        const condition = determineSurfaceCondition({
+            accRain, accSnow, currentTemp, continuousRainHours,
+            hadThaw: hadThaw && hadFreeze,
+            weatherCode: currentCode,
+            precipitation: typeof weatherData.precipitation === 'number' ? weatherData.precipitation : 0
+        });
+
+        console.log(`  ${condition.icon} ${condition.name.toUpperCase()} (${condition.severity.toUpperCase()})`);
+
+        return {
+            ...condition,
+            accRainMm: Math.round(accRain * 10) / 10,
+            accSnowCm: Math.round(accSnow * 10) / 10,
+            continuousRainHours,
+            currentTemp: Math.round(currentTemp * 10) / 10
+        };
+    } catch (error) {
+        console.error('Ошибка анализа поверхности:', error);
+        return getFallbackSurfaceCondition(weatherData);
+    }
+}
+
+// Определение 12 типов состояния поверхности
+function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRainHours, hadThaw, weatherCode, precipitation }) {
+    const isSnowing = (weatherCode >= 71 && weatherCode <= 79) || (weatherCode >= 85 && weatherCode <= 86);
+    const isRaining = (weatherCode >= 51 && weatherCode <= 67) || (weatherCode >= 80 && weatherCode <= 82);
+
+    // 1. Гололедица
+    if (currentTemp < -2 && accSnow > 0 && hadThaw) {
+        return {
+            name: 'Гололедица', icon: '🧊❄️', severity: 'critical',
+            brakeIncrease: 400, speedReduction: 70,
+            description: 'Слой льда >5 мм, движение крайне опасно',
+            coverage: '100%', depth: `${Math.round(accSnow * 10)}мм льда`,
+            forPedestrians: 'Крайне опасно — используйте нескользящую обувь, держитесь за поручни',
+            forDrivers: 'Движение фактически невозможно — двигайтесь только при крайней необходимости',
+            recommendations: ['Избегайте выхода на улицу без необходимости', 'Водителям: оставьте автомобиль при отсутствии шипованной резины']
+        };
+    }
+
+    // 2. Гололед
+    if (currentTemp >= -5 && currentTemp <= 2 && isRaining && accRain > 0) {
+        return {
+            name: 'Гололед', icon: '🧊', severity: 'critical',
+            brakeIncrease: 350, speedReduction: 60,
+            description: 'Тонкий лёд на поверхности, тормозной путь +300-400%',
+            coverage: '80-100%', depth: '1-3 мм',
+            forPedestrians: 'Очень опасно — риск падений, используйте нескользящую обувь',
+            forDrivers: 'Движение крайне опасно — снизьте скорость до минимума',
+            recommendations: ['Используйте шипованную резину', 'Увеличьте дистанцию до 10 секунд', 'Избегайте резкого торможения']
+        };
+    }
+
+    // 3. Обледенелый снег
+    if (accSnow > 5 && hadThaw && currentTemp < -2) {
+        return {
+            name: 'Обледенелый снег', icon: '🧊🌨️', severity: 'critical',
+            brakeIncrease: 300, speedReduction: 60,
+            description: 'Наст после оттепели — твёрдая скользкая корка',
+            coverage: '100%', depth: `${Math.round(accSnow)}см`,
+            forPedestrians: 'Очень опасно — высокий риск падений',
+            forDrivers: 'Движение опасно — высокий риск заноса',
+            recommendations: ['Используйте шипованную резину', 'Снизьте скорость на 60%', 'Избегайте резких манёвров']
+        };
+    }
+
+    // 4. Глубокий снег
+    if (accSnow > 15) {
+        return {
+            name: 'Глубокий снег', icon: '❄️❄️', severity: 'high',
+            brakeIncrease: 200, speedReduction: 50,
+            description: 'Снежный покров >15 см, движение существенно затруднено',
+            coverage: '100%', depth: `${Math.round(accSnow)}см`,
+            forPedestrians: 'Трудно передвигаться — возможно застревание',
+            forDrivers: 'Движение крайне затруднено — необходим полный привод',
+            recommendations: ['Используйте зимние шины', 'Снизьте скорость на 50%', 'Избегайте заснеженных второстепенных дорог']
+        };
+    }
+
+    // 5. Снежный покров
+    if (accSnow > 5) {
+        return {
+            name: 'Снежный покров', icon: '🌨️', severity: 'high',
+            brakeIncrease: 150, speedReduction: 40,
+            description: 'Снег 5-15 см, дороги в снегу',
+            coverage: '90-100%', depth: `${Math.round(accSnow)}см`,
+            forPedestrians: 'Неудобно — надевайте тёплую непромокаемую обувь',
+            forDrivers: 'Движение затруднено — снизьте скорость',
+            recommendations: ['Используйте зимние шины', 'Снизьте скорость на 40%', 'Будьте осторожны на перекрёстках']
+        };
+    }
+
+    // 6. Снежная каша
+    if (accSnow > 2 && currentTemp >= -2 && currentTemp <= 2) {
+        return {
+            name: 'Снежная каша', icon: '🌨️💧', severity: 'high',
+            brakeIncrease: 120, speedReduction: 35,
+            description: 'Мокрый снег, слякоть — плохое сцепление',
+            coverage: '70-90%', depth: `${Math.round(accSnow)}см`,
+            forPedestrians: 'Неприятно — намокание обуви и одежды',
+            forDrivers: 'Опасность аквапланирования и заноса',
+            recommendations: ['Снизьте скорость на 35%', 'Избегайте резкого торможения', 'Увеличьте дистанцию']
+        };
+    }
+
+    // 7. Лёгкий снег
+    if (accSnow > 2 || isSnowing) {
+        return {
+            name: 'Лёгкий снег', icon: '❄️', severity: 'moderate',
+            brakeIncrease: 80, speedReduction: 25,
+            description: 'Снег 2-5 см, виден асфальт',
+            coverage: '50-80%', depth: `${Math.round(accSnow)}см`,
+            forPedestrians: 'Осторожно — возможны скользкие участки',
+            forDrivers: 'Движение возможно с осторожностью',
+            recommendations: ['Используйте зимние шины', 'Снизьте скорость на 25%']
+        };
+    }
+
+    // 8. Затопление
+    if (accRain > 50 && continuousRainHours >= 1) {
+        return {
+            name: 'Затопление', icon: '🌊', severity: 'critical',
+            brakeIncrease: 250, speedReduction: 80,
+            description: 'Стоячая вода >10 см, риск затопления автомобилей',
+            coverage: '100%', depth: '>10 см',
+            forPedestrians: 'Опасно — не входите в зоны затопления',
+            forDrivers: 'Движение невозможно — риск гидроудара двигателя',
+            recommendations: ['Не заезжайте в затопленные участки', 'Объезжайте подтопленные зоны', 'Следите за уровнем воды']
+        };
+    }
+
+    // 9. Очень мокро
+    if (accRain > 15 && continuousRainHours >= 2) {
+        return {
+            name: 'Очень мокро', icon: '🌧️', severity: 'high',
+            brakeIncrease: 100, speedReduction: 30,
+            description: 'Глубокие лужи, риск аквапланирования',
+            coverage: '100%', depth: `${Math.round(accRain)}мм осадков`,
+            forPedestrians: 'Промокание обуви — используйте непромокаемую обувь',
+            forDrivers: 'Опасность аквапланирования — снизьте скорость',
+            recommendations: ['Снизьте скорость на 30%', 'Объезжайте крупные лужи', 'Проверьте состояние шин']
+        };
+    }
+
+    // 10. Мокро
+    if (accRain > 5 || continuousRainHours >= 1) {
+        return {
+            name: 'Мокро', icon: '💦', severity: 'moderate',
+            brakeIncrease: 50, speedReduction: 20,
+            description: 'Мокрое покрытие, увеличенный тормозной путь',
+            coverage: '80-100%', depth: `${Math.round(accRain)}мм осадков`,
+            forPedestrians: 'Умеренно — возможно намокание',
+            forDrivers: 'Тормозной путь увеличен на 50%',
+            recommendations: ['Снизьте скорость на 20%', 'Увеличьте дистанцию']
+        };
+    }
+
+    // 11. Влажно
+    if (accRain > 0.5 || precipitation > 0) {
+        return {
+            name: 'Влажно', icon: '💧', severity: 'low',
+            brakeIncrease: 20, speedReduction: 10,
+            description: 'Лёгкая влага на дороге',
+            coverage: '30-60%', depth: `${Math.round(accRain * 10) / 10}мм осадков`,
+            forPedestrians: 'Нормальные условия',
+            forDrivers: 'Незначительное увеличение тормозного пути',
+            recommendations: ['Соблюдайте дистанцию']
+        };
+    }
+
+    // 12. Сухо
+    return {
+        name: 'Сухо', icon: '✅', severity: 'low',
+        brakeIncrease: 0, speedReduction: 0,
+        description: 'Идеальные условия для движения',
+        coverage: '0%', depth: '0 мм',
+        forPedestrians: 'Идеальные условия',
+        forDrivers: 'Нормальный тормозной путь',
+        recommendations: ['Соблюдайте правила дорожного движения']
+    };
+}
+
+// Запасной анализ поверхности при недоступности API
+function getFallbackSurfaceCondition(weatherData) {
+    const temp = typeof weatherData.temp === 'number' ? weatherData.temp : 10;
+    const precipitation = typeof weatherData.precipitation === 'number' ? weatherData.precipitation : 0;
+    const weatherCode = weatherData.weatherCode || 0;
+
+    const result = determineSurfaceCondition({
+        accRain: precipitation * 3,
+        accSnow: (weatherCode >= 71 && weatherCode <= 86) ? precipitation * 3 : 0,
+        currentTemp: temp,
+        continuousRainHours: precipitation > 0 ? 1 : 0,
+        hadThaw: false,
+        weatherCode,
+        precipitation
+    });
+
+    return {
+        ...result,
+        accRainMm: Math.round(precipitation * 3 * 10) / 10,
+        accSnowCm: (weatherCode >= 71 && weatherCode <= 86) ? Math.round(precipitation * 3 * 10) / 10 : 0,
+        continuousRainHours: precipitation > 0 ? 1 : 0,
+        currentTemp: temp
+    };
+}
+
 // Инициализация слоёв карты
 function initLayers() {
     layerGroups.earthquakes = L.layerGroup().addTo(map);
@@ -2091,6 +2621,80 @@ function displayFullInfo(data) {
             </div>`).join('')}
         </div>` : ''}
 
+        ${data.pressureAnalysis ? `
+        <div class="info-section pressure-analysis">
+            <div class="section-title">🌡️ АТМОСФЕРНОЕ ДАВЛЕНИЕ</div>
+            <div class="pressure-main">
+                <div class="pressure-value-large">${data.pressureAnalysis.mmHg} мм рт.ст.</div>
+                <div class="pressure-level" style="color: ${data.pressureAnalysis.color}">${data.pressureAnalysis.levelName}</div>
+                <div class="pressure-trend">${data.pressureAnalysis.trendIcon} ${data.pressureAnalysis.trend} &nbsp;|&nbsp; ${data.pressure} гПа</div>
+            </div>
+            ${data.pressureAnalysis.healthEffects.length > 0 ? `
+            <div class="pressure-subsection">
+                <div class="pressure-subsection-title">🏥 Влияние на здоровье:</div>
+                ${data.pressureAnalysis.healthEffects.map(e => `<div class="pressure-effect">• ${escapeHtml(e)}</div>`).join('')}
+            </div>` : ''}
+            <div class="weather-forecast">
+                <span class="forecast-icon">🔮</span> ${escapeHtml(data.pressureAnalysis.weatherForecast)}
+            </div>
+        </div>` : ''}
+
+        <div class="info-section hazards-section">
+            <div class="section-title">⚠️ ОБНАРУЖЕННЫЕ ОПАСНОСТИ
+                ${data.hazards && data.hazards.length > 0 ? `<span class="hazards-count">${data.hazards.length}</span>` : ''}
+            </div>
+            ${data.hazards && data.hazards.length > 0 ? data.hazards.map(h => `
+            <div class="hazard-item severity-${h.severity}">
+                <div class="hazard-header">
+                    <span class="hazard-icon">${h.icon}</span>
+                    <span class="hazard-title">${escapeHtml(h.title)}</span>
+                    <span class="hazard-badge">${getSeverityName(h.severity)}</span>
+                </div>
+                <div class="hazard-details">
+                    <div class="hazard-value${h.severity === 'critical' ? ' hazard-critical' : ''}">${escapeHtml(h.value)}</div>
+                    <div>${escapeHtml(h.description)}</div>
+                </div>
+                ${h.layerName ? `<button class="hazard-action-btn" data-layer="${escapeHtml(h.layerName)}">▶ Показать на карте</button>` : ''}
+            </div>`).join('') : `
+            <div class="no-hazards">
+                <span class="no-hazards-icon">✅</span>
+                <div>Опасностей не обнаружено</div>
+            </div>`}
+        </div>
+
+        ${data.surfaceCondition ? `
+        <div class="info-section surface-section">
+            <div class="section-title">🛣️ СОСТОЯНИЕ ПОВЕРХНОСТИ</div>
+            <div class="surface-analysis">
+                <div class="surface-header">
+                    <span class="surface-icon">${data.surfaceCondition.icon}</span>
+                    <span class="surface-title">${escapeHtml(data.surfaceCondition.name)}</span>
+                    ${data.surfaceCondition.severity === 'critical' || data.surfaceCondition.severity === 'high' ? `<span class="surface-danger">${getSeverityName(data.surfaceCondition.severity)}</span>` : ''}
+                </div>
+                <div class="surface-description">${escapeHtml(data.surfaceCondition.description)}</div>
+                <div class="surface-subsection">
+                    <div class="accumulated-info">
+                        <div class="accumulated-row"><span>🌧️ Осадки 24ч:</span><span>${data.surfaceCondition.accRainMm ?? 0} мм</span></div>
+                        <div class="accumulated-row"><span>❄️ Снег 24ч:</span><span>${data.surfaceCondition.accSnowCm ?? 0} см</span></div>
+                        <div class="accumulated-row"><span>🌡️ Темп.:</span><span>${data.surfaceCondition.currentTemp ?? 'Н/Д'}°C</span></div>
+                        <div class="accumulated-row"><span>⏱️ Часов осадков:</span><span>${data.surfaceCondition.continuousRainHours ?? 0} ч</span></div>
+                    </div>
+                </div>
+                <div class="impact-grid">
+                    <div class="impact-item"><span>🚦 Тормоза</span><span>+${data.surfaceCondition.brakeIncrease}%</span></div>
+                    <div class="impact-item"><span>🚗 Скорость</span><span>-${data.surfaceCondition.speedReduction}%</span></div>
+                    <div class="impact-item"><span>📏 Покрытие</span><span>${data.surfaceCondition.coverage}</span></div>
+                </div>
+                <div class="surface-effect">🚶 ${escapeHtml(data.surfaceCondition.forPedestrians)}</div>
+                <div class="surface-effect">🚗 ${escapeHtml(data.surfaceCondition.forDrivers)}</div>
+                ${data.surfaceCondition.recommendations && data.surfaceCondition.recommendations.length > 0 ? `
+                <div class="surface-subsection">
+                    <div class="surface-subsection-title">💡 Рекомендации:</div>
+                    ${data.surfaceCondition.recommendations.map(r => `<div class="surface-effect">• ${escapeHtml(r)}</div>`).join('')}
+                </div>` : ''}
+            </div>
+        </div>` : ''}
+
         <div class="info-section">
             <div class="section-title">🕐 ВРЕМЯ</div>
             <div class="info-row">
@@ -2155,6 +2759,11 @@ function displayFullInfo(data) {
             [ 📋 ПОЛНАЯ ИНФОРМАЦИЯ ]
         </button>
     `;
+
+    // Event delegation for hazard-action buttons (avoids inline onclick with dynamic data)
+    content.querySelectorAll('.hazard-action-btn[data-layer]').forEach(btn => {
+        btn.addEventListener('click', () => focusOnLayer(btn.dataset.layer));
+    });
 
     updateTimestamp();
 }
