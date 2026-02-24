@@ -3531,7 +3531,7 @@ function showFireRiskLayer(lat, lng, fireRisk) {
     layerGroups.fireRisk.clearLayers();
 
     const circle = L.circle([lat, lng], {
-        radius: 200,
+        radius: 50,
         fillColor: fireRisk.color,
         color: fireRisk.color,
         weight: 2,
@@ -3573,7 +3573,7 @@ function showRoadPrecipLayer(lat, lng, precipAnalysis) {
     layerGroups.roadPrecip.clearLayers();
 
     const marker = L.circleMarker([lat, lng], {
-        radius: 18,
+        radius: 1000,
         fillColor: precipAnalysis.surfaceColor,
         color: precipAnalysis.surfaceColor,
         weight: 3,
