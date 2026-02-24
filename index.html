@@ -120,6 +120,17 @@
         </div>
     </div>
 
+    <!-- Модальное окно детальной информации о давлении -->
+    <div id="pressureDetailModal" class="surface-modal-overlay" onclick="if(event.target===this)closePressureDetailModal()">
+        <div class="surface-modal-content" onclick="event.stopPropagation()">
+            <div class="surface-modal-header">
+                <div class="surface-modal-title">&gt;&gt;&gt; ДЕТАЛЬНЫЙ АНАЛИЗ АТМОСФЕРНОГО ДАВЛЕНИЯ &lt;&lt;&lt;</div>
+                <button class="surface-modal-close" onclick="closePressureDetailModal()">&times;</button>
+            </div>
+            <div class="surface-modal-body" id="pressureDetailContent"></div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
     <script src="script.js"></script>
