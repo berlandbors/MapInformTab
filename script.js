@@ -541,7 +541,7 @@ function openModal(data) {
                 <span class="modal-label">Направление ветра:</span>
                 <span class="modal-value">${getWindDirection(data.windDir)} (${data.windDir}°)</span>
             </div>
-            <div class="modal-row">
+            <div class="modal-row" style="cursor:pointer" onclick="openPressureDetailModal(${JSON.stringify(data.pressureAnalysis).replace(/"/g, '&quot;')}, ${JSON.stringify({pressure: data.pressure}).replace(/"/g, '&quot;')})">
                 <span class="modal-label">Атм. давление:</span>
                 <span class="modal-value">${data.pressure} гПа${data.pressureAnalysis ? ` / ${data.pressureAnalysis.mmHg} мм рт.ст. — <span style="color: ${data.pressureAnalysis.color}">${data.pressureAnalysis.levelName}</span>` : ''}</span>
             </div>
@@ -3112,6 +3112,157 @@ function closeSurfaceDetailModal() {
     document.body.style.overflow = '';
 }
 
+// Открытие модального окна с детальной информацией о давлении
+function openPressureDetailModal(pressureData, fullData) {
+    const modal = document.getElementById('pressureDetailModal');
+    const content = document.getElementById('pressureDetailContent');
+
+    if (!modal || !content) {
+        console.error('Модальное окно давления не найдено');
+        return;
+    }
+
+    content.innerHTML = createDetailedPressureInfo(pressureData, fullData);
+    modal.classList.add('active');
+
+    if (isMobile) {
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+// Закрытие модального окна давления
+function closePressureDetailModal() {
+    const modal = document.getElementById('pressureDetailModal');
+    if (modal) {
+        modal.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+
+// Создание детального HTML-контента о давлении
+function createDetailedPressureInfo(pressureAnalysis, fullData) {
+    if (!pressureAnalysis || !fullData) {
+        return '<p>Данные о давлении недоступны</p>';
+    }
+
+    const pa = pressureAnalysis;
+    const color = pa.color || '#888888';
+    const pressure = fullData.pressure;
+
+    return `
+        <div class="pressure-detailed">
+            <div class="pressure-header-detailed" style="border-left:4px solid ${color};padding-left:10px">
+                <span class="pressure-icon-large">🌡️</span>
+                <div style="flex:1">
+                    <div class="pressure-value-large">${pressure} гПа</div>
+                    <div class="pressure-mmhg">${pa.mmHg} мм рт. ст.</div>
+                    <div class="pressure-level" style="color:${color}">${escapeHtml(pa.levelName)}</div>
+                </div>
+                <div class="pressure-trend-badge" style="background:${color}">
+                    ${pa.trendIcon} ${escapeHtml(pa.trend)}
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-section-title">📏 ШКАЛА АТМОСФЕРНОГО ДАВЛЕНИЯ</div>
+                <div class="pressure-scale">
+                    <div class="scale-item ${pa.level === 'very_low' ? 'scale-active' : ''}">
+                        <div class="scale-bar" style="background:#ff4444"></div>
+                        <div class="scale-label">&lt;980 гПа</div>
+                        <div class="scale-name">Очень низкое</div>
+                    </div>
+                    <div class="scale-item ${pa.level === 'low' ? 'scale-active' : ''}">
+                        <div class="scale-bar" style="background:#ff6600"></div>
+                        <div class="scale-label">980-1000 гПа</div>
+                        <div class="scale-name">Низкое</div>
+                    </div>
+                    <div class="scale-item ${pa.level === 'normal' ? 'scale-active' : ''}">
+                        <div class="scale-bar" style="background:#00ff00"></div>
+                        <div class="scale-label">1000-1020 гПа</div>
+                        <div class="scale-name">Нормальное</div>
+                    </div>
+                    <div class="scale-item ${pa.level === 'high' ? 'scale-active' : ''}">
+                        <div class="scale-bar" style="background:#ffaa00"></div>
+                        <div class="scale-label">1020-1040 гПа</div>
+                        <div class="scale-name">Повышенное</div>
+                    </div>
+                    <div class="scale-item ${pa.level === 'very_high' ? 'scale-active' : ''}">
+                        <div class="scale-bar" style="background:#ff4444"></div>
+                        <div class="scale-label">&gt;1040 гПа</div>
+                        <div class="scale-name">Очень высокое</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-section-title">🌦️ ПРОГНОЗ ПОГОДЫ</div>
+                <div class="weather-forecast-box">
+                    ${escapeHtml(pa.weatherForecast)}
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-section-title">🏥 ВЛИЯНИЕ НА ЗДОРОВЬЕ</div>
+                <div class="health-effects-list">
+                    ${pa.healthEffects && pa.healthEffects.length > 0
+                        ? pa.healthEffects.map(effect => `
+                            <div class="health-effect-item">
+                                <span class="effect-icon">•</span>
+                                <span class="effect-text">${escapeHtml(effect)}</span>
+                            </div>
+                        `).join('')
+                        : '<div class="health-effect-item">Нет особого влияния</div>'
+                    }
+                </div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-section-title">ℹ️ ДОПОЛНИТЕЛЬНАЯ ИНФОРМАЦИЯ</div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Единицы измерения:</span>
+                        <span class="info-value">гПа (гектопаскали)</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">1 гПа =</span>
+                        <span class="info-value">0.75 мм рт. ст.</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Среднее давление:</span>
+                        <span class="info-value">1013 гПа (760 мм рт. ст.)</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Ваше давление:</span>
+                        <span class="info-value" style="color:${color}">${escapeHtml(pa.levelName)}</span>
+                    </div>
+                </div>
+            </div>
+
+            ${pa.healthEffects && pa.healthEffects.length > 0 ? `
+            <div class="detail-section">
+                <div class="detail-section-title">💡 РЕКОМЕНДАЦИИ</div>
+                <div class="recommendations-box">
+                    ${pa.level === 'very_low' || pa.level === 'low'
+                        ? `
+                        <div class="recommendation-item">☕ Пейте больше жидкости и кофе для повышения тонуса</div>
+                        <div class="recommendation-item">🚶 Избегайте резких движений и физических нагрузок</div>
+                        <div class="recommendation-item">😴 Обеспечьте полноценный сон</div>
+                        `
+                        : pa.level === 'very_high' || pa.level === 'high'
+                        ? `
+                        <div class="recommendation-item">💊 Гипертоникам: принимайте назначенные препараты</div>
+                        <div class="recommendation-item">🧘 Избегайте стрессов и физических перегрузок</div>
+                        <div class="recommendation-item">🚭 Ограничьте кофеин и алкоголь</div>
+                        `
+                        : `<div class="recommendation-item">✅ Давление в норме — противопоказаний нет</div>`
+                    }
+                </div>
+            </div>
+            ` : ''}
+        </div>
+    `;
+}
+
 // Инициализация слоёв карты
 function initLayers() {
     layerGroups.earthquakes = L.layerGroup().addTo(map);
@@ -3382,9 +3533,9 @@ function displayFullInfo(data) {
                 <span class="info-label">Ветер:</span>
                 <span class="info-value">${data.windSpeed} м/с ${getWindDirection(data.windDir)}</span>
             </div>
-            <div class="info-row">
+            <div class="info-row" style="cursor:pointer" onclick="openPressureDetailModal(${JSON.stringify(data.pressureAnalysis).replace(/"/g, '&quot;')}, ${JSON.stringify({pressure: data.pressure}).replace(/"/g, '&quot;')})">
                 <span class="info-label">Давление:</span>
-                <span class="info-value">${data.pressure} гПа</span>
+                <span class="info-value">${data.pressure} гПа (${data.pressureAnalysis.trendIcon} ${data.pressureAnalysis.trend})</span>
             </div>
             ${data.precipitation > 0 ? `
             <div class="info-row">
