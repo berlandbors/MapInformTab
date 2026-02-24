@@ -3573,7 +3573,7 @@ function showRoadPrecipLayer(lat, lng, precipAnalysis) {
     layerGroups.roadPrecip.clearLayers();
 
     const marker = L.circleMarker([lat, lng], {
-        radius: 1000,
+        radius: 100,
         fillColor: precipAnalysis.surfaceColor,
         color: precipAnalysis.surfaceColor,
         weight: 3,
