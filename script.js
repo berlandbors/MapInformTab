@@ -12,6 +12,25 @@ let layerStates = { earthquakes: true, fireRisk: true, roadPrecip: true };
 // Предыдущее значение давления для определения тенденции
 let previousPressure = null;
 
+// Функция для сворачивания/разворачивания панели слоёв
+function toggleLayersPanel() {
+    const panel = document.getElementById('layersPanel');
+
+    panel.classList.toggle('collapsed');
+
+    // Сохраняем состояние в localStorage
+    const isCollapsed = panel.classList.contains('collapsed');
+    localStorage.setItem('layersPanelCollapsed', isCollapsed);
+}
+
+// Восстанавливаем состояние панели при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    const isCollapsed = localStorage.getItem('layersPanelCollapsed') === 'true';
+    if (isCollapsed) {
+        document.getElementById('layersPanel').classList.add('collapsed');
+    }
+});
+
 // Определение мобильного устройства
 const isMobile = window.matchMedia("(max-width: 768px)").matches;
 
