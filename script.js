@@ -141,10 +141,11 @@ async function scanLocation(lat, lng, isRescan = false) {
     showLoading();
 
     try {
-        const [weatherData, locationData, roadData, seismicData, timezoneData] = await Promise.all([
+        const [weatherData, locationData, roadData, pedestrianData, seismicData, timezoneData] = await Promise.all([
             getWeatherData(lat, lng),
             getLocationData(lat, lng),
             getRoadData(lat, lng),
+            getPedestrianData(lat, lng),
             getSeismicData(lat, lng),
             getTimezoneData(lat, lng)
         ]);
@@ -156,6 +157,7 @@ async function scanLocation(lat, lng, isRescan = false) {
             ...weatherData,
             ...locationData,
             ...roadData,
+            ...pedestrianData,
             ...seismicData,
             ...astronomyData,
             ...alertsData,
@@ -190,6 +192,12 @@ async function scanLocation(lat, lng, isRescan = false) {
         }
 
         console.log(`📊 Качество данных: ${quality.score}/100 (${getQualityLabel(quality.grade)})`);
+        console.log(`🚶 Пешеходные зоны: ${fullData.hasPedestrianArea ? 'найдены' : 'не найдены'}`);
+        if (fullData.hasPedestrianArea) {
+            console.log(`  Тип: ${fullData.pedestrianType}`);
+            console.log(`  Покрытие: ${fullData.pedestrianSurface}`);
+            console.log(`  Освещение: ${fullData.isLit ? 'Да' : 'Нет'}`);
+        }
 
         // Автоматическое пересканирование при низком качестве (только первый раз)
         if (quality.score < 50 && !isRescan) {
@@ -599,6 +607,42 @@ function openModal(data) {
             </div>
         </div>
 
+        ${data.hasPedestrianArea ? `
+        <div class="modal-section">
+            <div class="modal-section-title">🚶 ПЕШЕХОДНЫЕ ЗОНЫ</div>
+            <div class="modal-row">
+                <span class="modal-label">Тип зоны:</span>
+                <span class="modal-value">${data.pedestrianType}</span>
+            </div>
+            ${data.pedestrianName ? `
+            <div class="modal-row">
+                <span class="modal-label">Название:</span>
+                <span class="modal-value">${escapeHtml(data.pedestrianName)}</span>
+            </div>
+            ` : ''}
+            <div class="modal-row">
+                <span class="modal-label">Покрытие поверхности:</span>
+                <span class="modal-value">${data.pedestrianSurface}</span>
+            </div>
+            ${data.pedestrianWidth ? `
+            <div class="modal-row">
+                <span class="modal-label">Ширина:</span>
+                <span class="modal-value">${data.pedestrianWidth} м</span>
+            </div>
+            ` : ''}
+            <div class="modal-row">
+                <span class="modal-label">Освещение:</span>
+                <span class="modal-value">${data.isLit ? '💡 Присутствует' : '🌑 Отсутствует'}</span>
+            </div>
+            ${data.allSurfaces && data.allSurfaces.length > 1 ? `
+            <div class="modal-row">
+                <span class="modal-label">Найдено поверхностей:</span>
+                <span class="modal-value">${data.allSurfaces.length}</span>
+            </div>
+            ` : ''}
+        </div>
+        ` : ''}
+
         <div class="modal-section">
             <div class="modal-section-title">🌧️ ОСАДКИ И ПРЕДУПРЕЖДЕНИЯ</div>
             <div class="modal-row">
@@ -985,7 +1029,7 @@ async function getLocationData(lat, lng, attempt = 1) {
 
 // Получение данных о дорогах через Overpass API с каскадным поиском
 async function getRoadData(lat, lng, attempt = 1) {
-    const radiuses = [50, 100, 200];
+    const radiuses = [100, 250, 500, 1000];
     const radius = radiuses[Math.min(attempt - 1, radiuses.length - 1)];
 
     try {
@@ -1079,6 +1123,113 @@ function getRoadImportance(highway) {
         'path': 1
     };
     return importance[highway] || 0;
+}
+
+// Получение данных о пешеходных поверхностях через Overpass API
+async function getPedestrianData(lat, lng, attempt = 1) {
+    const radiuses = [100, 250, 500];
+    const radius = radiuses[Math.min(attempt - 1, radiuses.length - 1)];
+
+    try {
+        const query = `[out:json][timeout:10];
+            (
+                way(around:${radius},${lat},${lng})[highway~"^(footway|pedestrian|path|cycleway|steps|living_street)$"];
+                way(around:${radius},${lat},${lng})[leisure~"^(park|playground)$"];
+                way(around:${radius},${lat},${lng})[amenity~"^(plaza|square)$"];
+            );
+            out body 10;`;
+
+        const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data.elements && data.elements.length > 0) {
+            // Выбираем ближайшую пешеходную поверхность
+            const pedestrianSurfaces = data.elements
+                .filter(e => e.tags)
+                .map(e => ({
+                    type: e.tags.highway || e.tags.leisure || e.tags.amenity,
+                    name: e.tags.name || e.tags['name:ru'] || null,
+                    surface: e.tags.surface || null,
+                    width: e.tags.width || null,
+                    lit: e.tags.lit || null,
+                    tags: e.tags
+                }));
+
+            const bestSurface = pedestrianSurfaces[0];
+
+            console.log(`✅ Пешеходная поверхность найдена в радиусе ${radius}м: ${bestSurface.type}`);
+
+            return {
+                hasPedestrianArea: true,
+                pedestrianType: getPedestrianTypeName(bestSurface.type),
+                pedestrianName: bestSurface.name,
+                pedestrianSurface: getSurfaceName(bestSurface.surface),
+                pedestrianWidth: bestSurface.width,
+                isLit: bestSurface.lit === 'yes',
+                allSurfaces: pedestrianSurfaces
+            };
+        }
+
+        // Если не нашли и есть еще попытки
+        if (attempt < radiuses.length) {
+            console.log(`🔍 Пешеходные зоны не найдены в радиусе ${radius}м, расширяем поиск...`);
+            await sleep(500);
+            return getPedestrianData(lat, lng, attempt + 1);
+        }
+
+        console.log(`❌ Пешеходные зоны не найдены в радиусе ${radiuses[radiuses.length - 1]}м`);
+        return {
+            hasPedestrianArea: false,
+            pedestrianType: 'Нет данных',
+            pedestrianName: null,
+            pedestrianSurface: 'Н/Д',
+            pedestrianWidth: null,
+            isLit: false,
+            allSurfaces: []
+        };
+
+    } catch (error) {
+        console.error('Ошибка получения данных о пешеходных зонах:', error);
+
+        if (attempt < radiuses.length) {
+            console.log(`🔄 Повторный запрос пешеходных зон через 1 сек...`);
+            await sleep(1000);
+            return getPedestrianData(lat, lng, attempt + 1);
+        }
+
+        return {
+            hasPedestrianArea: false,
+            pedestrianType: 'Ошибка загрузки',
+            pedestrianName: null,
+            pedestrianSurface: 'Ошибка',
+            pedestrianWidth: null,
+            isLit: false,
+            allSurfaces: []
+        };
+    }
+}
+
+// Получение названия типа пешеходной зоны
+function getPedestrianTypeName(type) {
+    const types = {
+        footway: 'Пешеходная дорожка',
+        pedestrian: 'Пешеходная зона',
+        path: 'Тропинка',
+        cycleway: 'Велодорожка',
+        steps: 'Лестница',
+        living_street: 'Жилая зона',
+        park: 'Парк',
+        playground: 'Детская площадка',
+        plaza: 'Площадь',
+        square: 'Площадь'
+    };
+    return types[type] || type || 'Неизвестно';
 }
 
 // Получение иконки погоды по коду
@@ -1827,6 +1978,11 @@ function getSeverityName(severity) {
     return names[severity] || severity.toUpperCase();
 }
 
+function getSeverityIcon(severity) {
+    const icons = { critical: '🚨', high: '⚠️', moderate: '⚡', low: '✅' };
+    return icons[severity] || '⚠️';
+}
+
 // Коэффициент перевода гПа → мм рт. ст.
 const HPA_TO_MMHG = 0.750062;
 
@@ -2158,7 +2314,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 400, speedReduction: 70,
             description: 'Слой льда >5 мм, движение крайне опасно',
             coverage: '100%', depth: `${Math.round(accSnow * 10)}мм льда`,
-            forPedestrians: 'Крайне опасно — используйте нескользящую обувь, держитесь за поручни',
+            forPedestrians: '🚷 КРАЙНЕ ОПАСНО — высокий риск падений и травм. Используйте нескользящую обувь, ледоходы, держитесь за поручни. Пожилым людям лучше остаться дома',
             forDrivers: 'Движение фактически невозможно — двигайтесь только при крайней необходимости',
             recommendations: ['Избегайте выхода на улицу без необходимости', 'Водителям: оставьте автомобиль при отсутствии шипованной резины']
         };
@@ -2171,7 +2327,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 350, speedReduction: 60,
             description: 'Тонкий лёд на поверхности, тормозной путь +300-400%',
             coverage: '80-100%', depth: '1-3 мм',
-            forPedestrians: 'Очень опасно — риск падений, используйте нескользящую обувь',
+            forPedestrians: '⚠️ ОЧЕНЬ ОПАСНО — скользкая поверхность, риск падений. Передвигайтесь медленно, мелкими шагами. Избегайте крутых спусков и лестниц',
             forDrivers: 'Движение крайне опасно — снизьте скорость до минимума',
             recommendations: ['Используйте шипованную резину', 'Увеличьте дистанцию до 10 секунд', 'Избегайте резкого торможения']
         };
@@ -2184,7 +2340,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 300, speedReduction: 60,
             description: 'Наст после оттепели — твёрдая скользкая корка',
             coverage: '100%', depth: `${Math.round(accSnow)}см`,
-            forPedestrians: 'Очень опасно — высокий риск падений',
+            forPedestrians: '⚠️ ОЧЕНЬ ОПАСНО — высокий риск падений на насте. Используйте нескользящую обувь или ледоходы',
             forDrivers: 'Движение опасно — высокий риск заноса',
             recommendations: ['Используйте шипованную резину', 'Снизьте скорость на 60%', 'Избегайте резких манёвров']
         };
@@ -2197,7 +2353,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 200, speedReduction: 50,
             description: 'Снежный покров >15 см, движение существенно затруднено',
             coverage: '100%', depth: `${Math.round(accSnow)}см`,
-            forPedestrians: 'Трудно передвигаться — возможно застревание',
+            forPedestrians: '🥾 СЛОЖНО — глубокий снег затрудняет передвижение. Надевайте высокие непромокаемые ботинки',
             forDrivers: 'Движение крайне затруднено — необходим полный привод',
             recommendations: ['Используйте зимние шины', 'Снизьте скорость на 50%', 'Избегайте заснеженных второстепенных дорог']
         };
@@ -2210,7 +2366,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 150, speedReduction: 40,
             description: 'Снег 5-15 см, дороги в снегу',
             coverage: '90-100%', depth: `${Math.round(accSnow)}см`,
-            forPedestrians: 'Неудобно — надевайте тёплую непромокаемую обувь',
+            forPedestrians: '❄️ НЕУДОБНО — снежный покров, возможно скольжение. Надевайте тёплую непромокаемую обувь',
             forDrivers: 'Движение затруднено — снизьте скорость',
             recommendations: ['Используйте зимние шины', 'Снизьте скорость на 40%', 'Будьте осторожны на перекрёстках']
         };
@@ -2223,7 +2379,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 120, speedReduction: 35,
             description: 'Мокрый снег, слякоть — плохое сцепление',
             coverage: '70-90%', depth: `${Math.round(accSnow)}см`,
-            forPedestrians: 'Неприятно — намокание обуви и одежды',
+            forPedestrians: '💦 НЕПРИЯТНО — слякоть вызывает намокание обуви и одежды. Используйте непромокаемую обувь',
             forDrivers: 'Опасность аквапланирования и заноса',
             recommendations: ['Снизьте скорость на 35%', 'Избегайте резкого торможения', 'Увеличьте дистанцию']
         };
@@ -2236,7 +2392,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 80, speedReduction: 25,
             description: 'Снег 2-5 см, виден асфальт',
             coverage: '50-80%', depth: `${Math.round(accSnow)}см`,
-            forPedestrians: 'Осторожно — возможны скользкие участки',
+            forPedestrians: '⚠️ ОСТОРОЖНО — возможны скользкие участки, особенно в тени',
             forDrivers: 'Движение возможно с осторожностью',
             recommendations: ['Используйте зимние шины', 'Снизьте скорость на 25%']
         };
@@ -2249,7 +2405,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 250, speedReduction: 80,
             description: 'Стоячая вода >10 см, риск затопления автомобилей',
             coverage: '100%', depth: '>10 см',
-            forPedestrians: 'Опасно — не входите в зоны затопления',
+            forPedestrians: '🚷 ОПАСНО — не входите в зоны затопления. Риск падения в канализационные люки, поражения электрическим током. Обходите затопленные участки',
             forDrivers: 'Движение невозможно — риск гидроудара двигателя',
             recommendations: ['Не заезжайте в затопленные участки', 'Объезжайте подтопленные зоны', 'Следите за уровнем воды']
         };
@@ -2262,7 +2418,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 100, speedReduction: 30,
             description: 'Глубокие лужи, риск аквапланирования',
             coverage: '100%', depth: `${Math.round(accRain)}мм осадков`,
-            forPedestrians: 'Промокание обуви — используйте непромокаемую обувь',
+            forPedestrians: '🌧️ ПРОМОКАНИЕ — глубокие лужи. Используйте непромокаемую обувь, обходите скопления воды',
             forDrivers: 'Опасность аквапланирования — снизьте скорость',
             recommendations: ['Снизьте скорость на 30%', 'Объезжайте крупные лужи', 'Проверьте состояние шин']
         };
@@ -2275,7 +2431,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 50, speedReduction: 20,
             description: 'Мокрое покрытие, увеличенный тормозной путь',
             coverage: '80-100%', depth: `${Math.round(accRain)}мм осадков`,
-            forPedestrians: 'Умеренно — возможно намокание',
+            forPedestrians: '💦 УМЕРЕННО — возможно намокание обуви. Рекомендуется непромокаемая обувь',
             forDrivers: 'Тормозной путь увеличен на 50%',
             recommendations: ['Снизьте скорость на 20%', 'Увеличьте дистанцию']
         };
@@ -2288,7 +2444,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
             brakeIncrease: 20, speedReduction: 10,
             description: 'Лёгкая влага на дороге',
             coverage: '30-60%', depth: `${Math.round(accRain * 10) / 10}мм осадков`,
-            forPedestrians: 'Нормальные условия',
+            forPedestrians: '✅ НОРМАЛЬНЫЕ УСЛОВИЯ — лёгкая влага не создаёт серьёзных препятствий',
             forDrivers: 'Незначительное увеличение тормозного пути',
             recommendations: ['Соблюдайте дистанцию']
         };
@@ -2300,7 +2456,7 @@ function determineSurfaceCondition({ accRain, accSnow, currentTemp, continuousRa
         brakeIncrease: 0, speedReduction: 0,
         description: 'Идеальные условия для движения',
         coverage: '0%', depth: '0 мм',
-        forPedestrians: 'Идеальные условия',
+        forPedestrians: '✅ ИДЕАЛЬНЫЕ УСЛОВИЯ — сухая поверхность, хорошее сцепление, риски минимальны',
         forDrivers: 'Нормальный тормозной путь',
         recommendations: ['Соблюдайте правила дорожного движения']
     };
@@ -2603,7 +2759,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 400, speedReduction: 70,
             description: 'Слой льда >5 мм, движение крайне опасно',
             coverage: '100%', depth: `${Math.round(accSnow * 10)}мм льда`,
-            forPedestrians: 'Крайне опасно — используйте нескользящую обувь, держитесь за поручни',
+            forPedestrians: '🚷 КРАЙНЕ ОПАСНО — высокий риск падений и травм. Используйте нескользящую обувь, ледоходы, держитесь за поручни. Пожилым людям лучше остаться дома',
             forDrivers: 'Движение фактически невозможно — двигайтесь только при крайней необходимости',
             recommendations: ['Избегайте выхода на улицу без необходимости', 'Водителям: оставьте автомобиль при отсутствии шипованной резины']
         };
@@ -2615,7 +2771,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 350, speedReduction: 60,
             description: 'Тонкий лёд на поверхности, тормозной путь +300-400%',
             coverage: '80-100%', depth: '1-3 мм',
-            forPedestrians: 'Очень опасно — риск падений, используйте нескользящую обувь',
+            forPedestrians: '⚠️ ОЧЕНЬ ОПАСНО — скользкая поверхность, риск падений. Передвигайтесь медленно, мелкими шагами. Избегайте крутых спусков и лестниц',
             forDrivers: 'Движение крайне опасно — снизьте скорость до минимума',
             recommendations: ['Используйте шипованную резину', 'Увеличьте дистанцию до 10 секунд', 'Избегайте резкого торможения']
         };
@@ -2627,7 +2783,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 300, speedReduction: 60,
             description: 'Наст после оттепели — твёрдая скользкая корка',
             coverage: '100%', depth: `${Math.round(accSnow)}см`,
-            forPedestrians: 'Очень опасно — высокий риск падений',
+            forPedestrians: '⚠️ ОЧЕНЬ ОПАСНО — высокий риск падений на насте. Используйте нескользящую обувь или ледоходы',
             forDrivers: 'Движение опасно — высокий риск заноса',
             recommendations: ['Используйте шипованную резину', 'Снизьте скорость на 60%', 'Избегайте резких манёвров']
         };
@@ -2639,7 +2795,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 200, speedReduction: 50,
             description: 'Снежный покров >15 см, движение существенно затруднено',
             coverage: '100%', depth: `${Math.round(accSnow)}см`,
-            forPedestrians: 'Трудно передвигаться — возможно застревание',
+            forPedestrians: '🥾 СЛОЖНО — глубокий снег затрудняет передвижение. Надевайте высокие непромокаемые ботинки',
             forDrivers: 'Движение крайне затруднено — необходим полный привод',
             recommendations: ['Используйте зимние шины', 'Снизьте скорость на 50%', 'Избегайте заснеженных второстепенных дорог']
         };
@@ -2651,7 +2807,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 150, speedReduction: 40,
             description: 'Снег 5-15 см, дороги в снегу',
             coverage: '90-100%', depth: `${Math.round(accSnow)}см`,
-            forPedestrians: 'Неудобно — надевайте тёплую непромокаемую обувь',
+            forPedestrians: '❄️ НЕУДОБНО — снежный покров, возможно скольжение. Надевайте тёплую непромокаемую обувь',
             forDrivers: 'Движение затруднено — снизьте скорость',
             recommendations: ['Используйте зимние шины', 'Снизьте скорость на 40%', 'Будьте осторожны на перекрёстках']
         };
@@ -2663,7 +2819,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 80, speedReduction: 25,
             description: 'Снег 2-5 см, виден асфальт',
             coverage: '50-80%', depth: `${Math.round(accSnow)}см`,
-            forPedestrians: 'Осторожно — возможны скользкие участки',
+            forPedestrians: '⚠️ ОСТОРОЖНО — возможны скользкие участки, особенно в тени',
             forDrivers: 'Движение возможно с осторожностью',
             recommendations: ['Используйте зимние шины', 'Снизьте скорость на 25%']
         };
@@ -2675,7 +2831,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 120, speedReduction: 35,
             description: 'Мокрый снег, слякоть — плохое сцепление',
             coverage: '70-90%', depth: `${Math.round(accSnow)}см`,
-            forPedestrians: 'Неприятно — намокание обуви и одежды',
+            forPedestrians: '💦 НЕПРИЯТНО — слякоть вызывает намокание обуви и одежды. Используйте непромокаемую обувь',
             forDrivers: 'Опасность аквапланирования и заноса',
             recommendations: ['Снизьте скорость на 35%', 'Избегайте резкого торможения', 'Увеличьте дистанцию']
         };
@@ -2687,7 +2843,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 250, speedReduction: 80,
             description: 'Стоячая вода >10 см, риск затопления автомобилей',
             coverage: '100%', depth: '>10 см',
-            forPedestrians: 'Опасно — не входите в зоны затопления',
+            forPedestrians: '🚷 ОПАСНО — не входите в зоны затопления. Риск падения в канализационные люки, поражения электрическим током. Обходите затопленные участки',
             forDrivers: 'Движение невозможно — риск гидроудара двигателя',
             recommendations: ['Не заезжайте в затопленные участки', 'Объезжайте подтопленные зоны', 'Следите за уровнем воды']
         };
@@ -2699,7 +2855,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 100, speedReduction: 30,
             description: 'Глубокие лужи, риск аквапланирования',
             coverage: '100%', depth: `${Math.round(accRain)}мм осадков`,
-            forPedestrians: 'Промокание обуви — используйте непромокаемую обувь',
+            forPedestrians: '🌧️ ПРОМОКАНИЕ — глубокие лужи. Используйте непромокаемую обувь, обходите скопления воды',
             forDrivers: 'Опасность аквапланирования — снизьте скорость',
             recommendations: ['Снизьте скорость на 30%', 'Объезжайте крупные лужи', 'Проверьте состояние шин']
         };
@@ -2711,7 +2867,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 50, speedReduction: 20,
             description: 'Мокрое покрытие, увеличенный тормозной путь',
             coverage: '80-100%', depth: `${Math.round(accRain)}мм осадков`,
-            forPedestrians: 'Умеренно — возможно намокание',
+            forPedestrians: '💦 УМЕРЕННО — возможно намокание обуви. Рекомендуется непромокаемая обувь',
             forDrivers: 'Тормозной путь увеличен на 50%',
             recommendations: ['Снизьте скорость на 20%', 'Увеличьте дистанцию']
         };
@@ -2723,7 +2879,7 @@ function determineAdvancedSurfaceCondition(data) {
             brakeIncrease: 20, speedReduction: 10,
             description: 'Лёгкая влага на дороге',
             coverage: '30-60%', depth: `${Math.round(accRain * 10) / 10}мм осадков`,
-            forPedestrians: 'Нормальные условия',
+            forPedestrians: '✅ НОРМАЛЬНЫЕ УСЛОВИЯ — лёгкая влага не создаёт серьёзных препятствий',
             forDrivers: 'Незначительное увеличение тормозного пути',
             recommendations: ['Соблюдайте дистанцию']
         };
@@ -2734,7 +2890,7 @@ function determineAdvancedSurfaceCondition(data) {
         brakeIncrease: 0, speedReduction: 0,
         description: 'Идеальные условия для движения',
         coverage: '0%', depth: '0 мм',
-        forPedestrians: 'Идеальные условия',
+        forPedestrians: '✅ ИДЕАЛЬНЫЕ УСЛОВИЯ — сухая поверхность, хорошее сцепление, риски минимальны',
         forDrivers: 'Нормальный тормозной путь',
         recommendations: ['Соблюдайте правила дорожного движения']
     };
@@ -3067,8 +3223,39 @@ function createDetailedSurfaceInfo(surfaceData) {
                     </div>
                     <div class="rec-category"><span>🏍️ Мотоциклы:</span> <span>${escapeHtml(di.motorcycleRisk ?? '⚠️ Осторожно')}</span></div>
                     <div class="rec-category"><span>🚴 Велосипеды:</span> <span>${escapeHtml(di.bicycleRisk ?? '⚠️ Осторожно')}</span></div>
-                    <div class="rec-category"><span>🚶 Пешеходы:</span> <span>${escapeHtml(surfaceData.forPedestrians || 'Нормальные условия')}</span></div>
                 </div>
+            </div>
+
+            <div class="detail-section">
+                <div class="detail-section-title">🚶 ДЛЯ ПЕШЕХОДОВ</div>
+                <div class="pedestrian-warning-box" style="border-left:4px solid ${color}">
+                    <div class="warning-icon">${getSeverityIcon(surfaceData.severity)}</div>
+                    <div class="warning-text">${escapeHtml(surfaceData.forPedestrians || 'Нормальные условия')}</div>
+                </div>
+                ${currentMarkerData && currentMarkerData.hasPedestrianArea ? `
+                <div class="pedestrian-info-box">
+                    <div class="pedestrian-info-title">📍 Ближайшая пешеходная зона:</div>
+                    <div class="pedestrian-info-item">
+                        <span class="info-icon">🚶</span>
+                        <span>${escapeHtml(currentMarkerData.pedestrianType)}${currentMarkerData.pedestrianName ? ' "' + escapeHtml(currentMarkerData.pedestrianName) + '"' : ''}</span>
+                    </div>
+                    <div class="pedestrian-info-item">
+                        <span class="info-icon">🛤️</span>
+                        <span>Покрытие: ${escapeHtml(currentMarkerData.pedestrianSurface)}</span>
+                    </div>
+                    ${currentMarkerData.isLit ? `
+                    <div class="pedestrian-info-item">
+                        <span class="info-icon">💡</span>
+                        <span>Освещение присутствует</span>
+                    </div>
+                    ` : `
+                    <div class="pedestrian-info-item">
+                        <span class="info-icon">🌑</span>
+                        <span>Освещение отсутствует — используйте фонарик</span>
+                    </div>
+                    `}
+                </div>
+                ` : ''}
             </div>
 
             <div class="detail-section">
@@ -3567,6 +3754,36 @@ function displayFullInfo(data) {
             </div>
             ` : ''}
         </div>
+
+        ${data.hasPedestrianArea ? `
+        <div class="info-section">
+            <div class="section-title">🚶 ПЕШЕХОДНЫЕ ЗОНЫ</div>
+            <div class="info-row">
+                <span class="info-label">Тип:</span>
+                <span class="info-value">${data.pedestrianType}</span>
+            </div>
+            ${data.pedestrianName ? `
+            <div class="info-row">
+                <span class="info-label">Название:</span>
+                <span class="info-value">${escapeHtml(data.pedestrianName)}</span>
+            </div>
+            ` : ''}
+            <div class="info-row">
+                <span class="info-label">Покрытие:</span>
+                <span class="info-value">${data.pedestrianSurface}</span>
+            </div>
+            ${data.pedestrianWidth ? `
+            <div class="info-row">
+                <span class="info-label">Ширина:</span>
+                <span class="info-value">${data.pedestrianWidth} м</span>
+            </div>
+            ` : ''}
+            <div class="info-row">
+                <span class="info-label">Освещение:</span>
+                <span class="info-value">${data.isLit ? '💡 Есть' : '🌑 Нет'}</span>
+            </div>
+        </div>
+        ` : ''}
 
         ${data.precipAnalysis && data.precipAnalysis.speedReduction !== 0 ? `
         <div class="info-section">
