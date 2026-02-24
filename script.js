@@ -3193,7 +3193,7 @@ function showFireRiskLayer(lat, lng, fireRisk) {
     layerGroups.fireRisk.clearLayers();
 
     const circle = L.circle([lat, lng], {
-        radius: 20000,
+        radius: 200,
         fillColor: fireRisk.color,
         color: fireRisk.color,
         weight: 2,
