@@ -179,7 +179,7 @@ async function scanLocation(lat, lng, isRescan = false) {
         console.log(`📊 Анализ давления: ${fullData.pressure} гПа (${fullData.pressureAnalysis.levelName}, ${fullData.pressureAnalysis.trend})`);
 
         // Анализ состояния поверхности (асинхронно через Open-Meteo API)
-        fullData.surfaceCondition = await analyzeSurfaceConditionAdvanced(lat, lng, weatherData);
+        fullData.surfaceCondition = await analyzeSurfaceConditionAdvanced(lat, lng, { ...weatherData, ...roadData }, locationData);
 
         // Сбор опасностей
         fullData.hazards = collectHazards(fullData);
@@ -1034,8 +1034,10 @@ async function getRoadData(lat, lng, attempt = 1) {
 
     try {
         const query = `[out:json][timeout:10];
-            way(around:${radius},${lat},${lng})[highway];
-            out body 5;`; // Получаем до 5 дорог для выбора лучшей по важности
+            (way(around:${radius},${lat},${lng})[highway];
+             way(around:${radius},${lat},${lng})[footway];
+             way(around:${radius},${lat},${lng})[path];);
+            out body 10;`;
 
         const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
         const response = await fetch(url);
@@ -1049,7 +1051,7 @@ async function getRoadData(lat, lng, attempt = 1) {
         if (data.elements && data.elements.length > 0) {
             // Выбираем лучшую дорогу (с названием и важным типом)
             const bestRoad = data.elements
-                .filter(r => r.tags && r.tags.highway)
+                .filter(r => r.tags && (r.tags.highway || r.tags.footway || r.tags.path))
                 .sort((a, b) => {
                     const scoreA = (a.tags.name ? 10 : 0) + getRoadImportance(a.tags.highway);
                     const scoreB = (b.tags.name ? 10 : 0) + getRoadImportance(b.tags.highway);
@@ -1066,6 +1068,7 @@ async function getRoadData(lat, lng, attempt = 1) {
                 roadType: getRoadTypeName(tags.highway),
                 maxSpeed: tags.maxspeed ? parseInt(tags.maxspeed) : null,
                 roadSurface: getSurfaceName(tags.surface),
+                roadSurfaceRaw: tags.surface || null,
                 lanes: tags.lanes || null,
                 traffic: traffic
             };
@@ -2492,13 +2495,13 @@ function getFallbackSurfaceCondition(weatherData) {
 // ============================================================
 
 // Основная функция расширенного анализа состояния поверхности
-async function analyzeSurfaceConditionAdvanced(lat, lng, currentWeather) {
+async function analyzeSurfaceConditionAdvanced(lat, lng, currentWeather, locationData = {}) {
     console.log('🛣️ Расширенный анализ поверхности...');
     try {
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
             `&hourly=precipitation,rain,snowfall,temperature_2m,surface_temperature,` +
             `dewpoint_2m,relativehumidity_2m,windspeed_10m,cloudcover,shortwave_radiation,weathercode` +
-            `&past_hours=24&forecast_hours=6&timezone=auto`;
+            `&past_hours=72&forecast_hours=6&timezone=auto`;
         const response = await fetch(url);
         const data = await response.json();
         const hourly = data.hourly;
@@ -2510,6 +2513,7 @@ async function analyzeSurfaceConditionAdvanced(lat, lng, currentWeather) {
         const precipAnalysis = analyzePrecipitationPeriods(hourly);
         const dryingAnalysis = analyzeDryingConditions(hourly, currentWeather);
         const surfaceType = determineSurfaceType(currentWeather.roadType || '');
+        const surfaceTypeAdv = determineSurfaceTypeAdvanced(currentWeather.roadSurfaceRaw || null);
         const coverage = calculateSurfaceCoverage(precipAnalysis, dryingAnalysis);
 
         const conditionData = {
@@ -2525,6 +2529,18 @@ async function analyzeSurfaceConditionAdvanced(lat, lng, currentWeather) {
         const drivingImpact = calculateDetailedDrivingImpact(condition, surfaceType);
         const forecast = forecastSurfaceChange(hourly, condition);
 
+        // New advanced analyses
+        const season = determineSeason(lat);
+        const microclimate = analyzeMicroclimate(locationData, currentWeather);
+        const seasonalRisks = getSeasonalRisks(season, dryingAnalysis.airTemp, precipAnalysis.total24h);
+        const frictionCoef = calculateFrictionCoefficient(surfaceTypeAdv, condition.name);
+        const brakingDistances = {
+            at60kmh:  calculateBrakingDistance(60,  frictionCoef),
+            at90kmh:  calculateBrakingDistance(90,  frictionCoef),
+            at120kmh: calculateBrakingDistance(120, frictionCoef)
+        };
+        const freezeThawCycles = analyzeFreezeThawCycles(hourly);
+
         // Backward-compatible fields
         const result = {
             ...condition,
@@ -2536,9 +2552,17 @@ async function analyzeSurfaceConditionAdvanced(lat, lng, currentWeather) {
             precipAnalysisDetailed: precipAnalysis,
             dryingAnalysis,
             surfaceType,
+            surfaceTypeAdv,
             coverage,
             drivingImpact,
-            forecast
+            forecast,
+            // New fields
+            microclimate,
+            season,
+            seasonalRisks,
+            frictionCoef,
+            brakingDistances,
+            freezeThawCycles
         };
 
         console.log(`  ${result.icon} ${result.name} (${result.severity.toUpperCase()})`);
@@ -2549,6 +2573,8 @@ async function analyzeSurfaceConditionAdvanced(lat, lng, currentWeather) {
         }
         console.log(`  🚗 Тормозной путь: 60→${60 + Math.round(60 * drivingImpact.brakingModifier / 100)}м (+${Math.round(60 * drivingImpact.brakingModifier / 100)}м)`);
         console.log(`  ${forecast.trendIcon} Тренд: ${forecast.trend}`);
+        console.log(`  🌍 Микроклимат: ${microclimate.locationLabel} (тепловой остров ${microclimate.urbanHeatIsland >= 0 ? '+' : ''}${microclimate.urbanHeatIsland}°C)`);
+        console.log(`  🔄 Циклы замерзания/оттаивания: ${freezeThawCycles}`);
 
         return result;
     } catch (error) {
@@ -2563,8 +2589,8 @@ function analyzePrecipitationPeriods(hourlyData) {
     const snow = hourlyData.snowfall || [];
     const rain = hourlyData.rain || [];
     const total = precip.length;
-    // past_hours=24, forecast_hours=6 → indices 0..29; current hour index = 23
-    const nowIdx = Math.min(23, total - 7);
+    // past_hours=72, forecast_hours=6 → indices 0..77; current hour index = 71
+    const nowIdx = Math.min(71, total - 7);
 
     function sumPeriod(arr, hoursBack) {
         let s = 0;
@@ -2579,7 +2605,9 @@ function analyzePrecipitationPeriods(hourlyData) {
     const total6h = sumPeriod(precip, 6);
     const total12h = sumPeriod(precip, 12);
     const total24h = sumPeriod(precip, 24);
+    const total72h = sumPeriod(precip, 72);
     const snowTotal24h = sumPeriod(snow, 24);
+    const snowTotal72h = sumPeriod(snow, 72);
     const rainTotal24h = sumPeriod(rain, 24);
 
     // Время с последних осадков
@@ -2600,8 +2628,8 @@ function analyzePrecipitationPeriods(hourlyData) {
     const currentIntensity = precip[nowIdx] || 0;
 
     return {
-        total1h, total3h, total6h, total12h, total24h,
-        snowTotal24h, rainTotal24h,
+        total1h, total3h, total6h, total12h, total24h, total72h,
+        snowTotal24h, snowTotal72h, rainTotal24h,
         hoursSinceRain,
         continuousRainHours,
         currentIntensity,
@@ -2611,7 +2639,7 @@ function analyzePrecipitationPeriods(hourlyData) {
 
 // Анализ условий высыхания
 function analyzeDryingConditions(hourlyData, currentWeather) {
-    const nowIdx = Math.min(23, (hourlyData.temperature_2m || []).length - 7);
+    const nowIdx = Math.min(71, (hourlyData.temperature_2m || []).length - 7);
 
     const airTemp = (hourlyData.temperature_2m || [])[nowIdx] ??
         (typeof currentWeather.temp === 'number' ? currentWeather.temp : 15);
@@ -2628,7 +2656,7 @@ function analyzeDryingConditions(hourlyData, currentWeather) {
     const tempDiff = surfaceTemp - dewpoint;
     const isAboveDewpoint = tempDiff > 0;
 
-    const evaporationRate = calculateEvaporationRate(tempDiff, windSpeed, humidity, radiation);
+    const evaporationRate = calculateEvaporationRate(tempDiff, windSpeed, humidity, radiation, determineSurfaceTypeAdvanced(currentWeather.roadSurfaceRaw || null));
 
     // Оставшаяся вода (мм) — из анализа осадков vs испарения
     const precipAnalysis = analyzePrecipitationPeriods(hourlyData);
@@ -2664,7 +2692,7 @@ function analyzeDryingConditions(hourlyData, currentWeather) {
 
 // Расчёт скорости испарения (мм/час)
 // Эмпирическая формула: сумма вкладов разности температур, ветра, влажности и радиации
-function calculateEvaporationRate(tempDiff, windSpeed, humidity, radiation) {
+function calculateEvaporationRate(tempDiff, windSpeed, humidity, radiation, surfaceType) {
     // 0.05: эмпирический коэффициент влияния разности температур на испарение
     let rate = Math.max(0, tempDiff * 0.05);
     // 100: нормировочный делитель для скорости ветра (км/ч → мм/ч)
@@ -2674,6 +2702,13 @@ function calculateEvaporationRate(tempDiff, windSpeed, humidity, radiation) {
     rate *= humidityFactor;
     // 0.001: масштабный коэффициент для солнечной радиации (Вт/м² → мм/ч)
     rate += radiation * 0.001;
+    // Учёт типа покрытия: dryingSpeed (относительный множитель, 1.0 = асфальт)
+    const dryingSpeed = surfaceType ? (surfaceType.dryingSpeed || 1.0) : 1.0;
+    rate *= dryingSpeed;
+    // Учёт пористости: пористые покрытия впитывают воду, снижая поверхностное накопление
+    // 0.5 — эмпирический коэффициент перевода пористости в мм/ч испарения через впитывание
+    const porosity = surfaceType ? (surfaceType.porosity || 0.05) : 0.05;
+    rate += porosity * 0.5;
     // Физически реалистичные границы: 0.05–5 мм/ч
     return Math.max(0.05, Math.min(5, rate));
 }
@@ -2702,7 +2737,127 @@ function determineSurfaceType(roadTypeRaw) {
     return { type: 'standard_asphalt', drainage: 'good', texture: 'medium', label: 'Асфальтобетон стандартный' };
 }
 
-// Расчёт остаточной воды и категории покрытия
+// Расширенное определение типа покрытия по тегу surface из OSM
+function determineSurfaceTypeAdvanced(surfaceOSM) {
+    const s = (surfaceOSM || '').toLowerCase();
+    const types = {
+        asphalt:       { frictionDry: 0.80, frictionWet: 0.55, frictionSnow: 0.30, frictionIce: 0.15, porosity: 0.05, drainage: 'good',      dryingSpeed: 1.0, label: 'Асфальт' },
+        concrete:      { frictionDry: 0.80, frictionWet: 0.60, frictionSnow: 0.35, frictionIce: 0.18, porosity: 0.03, drainage: 'good',      dryingSpeed: 0.9, label: 'Бетон' },
+        paving_stones: { frictionDry: 0.70, frictionWet: 0.45, frictionSnow: 0.25, frictionIce: 0.12, porosity: 0.10, drainage: 'moderate',  dryingSpeed: 1.2, label: 'Плитка' },
+        cobblestone:   { frictionDry: 0.65, frictionWet: 0.40, frictionSnow: 0.22, frictionIce: 0.10, porosity: 0.15, drainage: 'moderate',  dryingSpeed: 1.3, label: 'Брусчатка' },
+        gravel:        { frictionDry: 0.60, frictionWet: 0.50, frictionSnow: 0.40, frictionIce: 0.20, porosity: 0.35, drainage: 'good',      dryingSpeed: 1.5, label: 'Гравий' },
+        dirt:          { frictionDry: 0.55, frictionWet: 0.25, frictionSnow: 0.30, frictionIce: 0.15, porosity: 0.40, drainage: 'poor',      dryingSpeed: 0.5, label: 'Грунт' },
+        grass:         { frictionDry: 0.50, frictionWet: 0.30, frictionSnow: 0.35, frictionIce: 0.18, porosity: 0.50, drainage: 'poor',      dryingSpeed: 0.4, label: 'Трава' },
+        wood:          { frictionDry: 0.65, frictionWet: 0.30, frictionSnow: 0.20, frictionIce: 0.10, porosity: 0.05, drainage: 'poor',      dryingSpeed: 0.6, label: 'Дерево' },
+        paved:         { frictionDry: 0.75, frictionWet: 0.50, frictionSnow: 0.28, frictionIce: 0.14, porosity: 0.08, drainage: 'good',      dryingSpeed: 1.0, label: 'Мощёное' },
+        unpaved:       { frictionDry: 0.55, frictionWet: 0.30, frictionSnow: 0.35, frictionIce: 0.18, porosity: 0.40, drainage: 'poor',      dryingSpeed: 0.5, label: 'Немощёное' }
+    };
+    return types[s] || types['asphalt'];
+}
+
+// Определение сезона по широте и месяцу
+function determineSeason(lat) {
+    const month = new Date().getMonth(); // 0=Jan..11=Dec
+    const isNorth = lat >= 0;
+    const seasons = isNorth
+        ? ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter']
+        : ['summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter', 'winter', 'winter', 'spring', 'spring', 'spring', 'summer'];
+    return seasons[month];
+}
+
+// Анализ микроклимата на основе данных о местности
+function analyzeMicroclimate(locationData, weatherData) {
+    const city = (locationData.city || '').toLowerCase();
+    const objType = (locationData.objectType || '').toLowerCase();
+    const district = (locationData.district || '').toLowerCase();
+
+    let locationType, locationLabel, urbanHeatIsland;
+
+    const isForest = objType.includes('forest') || objType.includes('wood') || objType.includes('nature') ||
+                     district.includes('лес') || district.includes('парк');
+    const isUrban  = city !== 'нет данных' && city !== 'ошибка загрузки' && city !== '';
+
+    if (isForest) {
+        locationType = 'forest';
+        locationLabel = 'Лес / Парк';
+        urbanHeatIsland = -1;
+    } else if (isUrban) {
+        locationType = 'urban';
+        locationLabel = 'Городская застройка';
+        urbanHeatIsland = 2;
+    } else {
+        locationType = 'rural';
+        locationLabel = 'Сельская местность / Поле';
+        urbanHeatIsland = 0;
+    }
+
+    const correctedTemp = Math.round(((weatherData.temp ?? 0) + urbanHeatIsland) * 10) / 10;
+    return { locationType, locationLabel, urbanHeatIsland, correctedTemp };
+}
+
+// Сезонные риски
+function getSeasonalRisks(season, temp, precip) {
+    const risks = [];
+    if (season === 'winter') {
+        if (temp < 0 && precip > 0)  risks.push({ icon: '🧊', text: 'Риск гололёда', severity: 'high' });
+        if (temp < -15)              risks.push({ icon: '🥶', text: 'Экстремальный холод', severity: 'high' });
+        if (precip > 5)              risks.push({ icon: '🌨️', text: 'Снегопад — затруднено движение', severity: 'moderate' });
+    } else if (season === 'spring') {
+        if (temp > 0 && temp < 5 && precip > 0) risks.push({ icon: '💧', text: 'Таяние снега — скользко', severity: 'moderate' });
+        if (precip > 10)             risks.push({ icon: '🌊', text: 'Риск паводка', severity: 'high' });
+    } else if (season === 'summer') {
+        if (temp > 35)               risks.push({ icon: '🌡️', text: 'Экстремальная жара', severity: 'high' });
+        if (precip > 20)             risks.push({ icon: '⛈️', text: 'Сильный ливень', severity: 'high' });
+    } else if (season === 'autumn') {
+        if (temp < 5 && precip > 0)  risks.push({ icon: '🍂', text: 'Мокрые листья — скользкая дорога', severity: 'moderate' });
+        if (precip > 15)             risks.push({ icon: '🌧️', text: 'Затяжные дожди', severity: 'moderate' });
+    }
+    return risks;
+}
+
+// Расчёт коэффициента трения по типу покрытия и состоянию
+function calculateFrictionCoefficient(surfaceTypeProps, condition) {
+    const props = surfaceTypeProps || determineSurfaceTypeAdvanced('asphalt');
+    const cond = (condition || '').toLowerCase();
+    let friction;
+    if (cond.includes('лёд') || cond.includes('гололед') || cond.includes('ice')) {
+        friction = props.frictionIce;
+    } else if (cond.includes('снег') || cond.includes('snow')) {
+        friction = props.frictionSnow;
+    } else if (cond.includes('мокро') || cond.includes('wet') || cond.includes('дождь') || cond.includes('rain')) {
+        friction = props.frictionWet;
+    } else {
+        friction = props.frictionDry;
+    }
+    return Math.round(friction * 100) / 100;
+}
+
+// Расчёт тормозного пути (м) для заданной скорости (км/ч) и коэффициента трения
+// Реакция водителя: 1.0 с (среднестатистический водитель, может варьироваться)
+function calculateBrakingDistance(speed, friction) {
+    const g = 9.81;
+    const v = speed / 3.6; // км/ч → м/с
+    const reactionTime = 1.0; // с
+    const reactionDistance = Math.round(v * reactionTime);
+    const brakingDistance  = Math.round((v * v) / (2 * g * Math.max(friction, 0.05)));
+    return { reactionDistance, brakingDistance, totalDistance: reactionDistance + brakingDistance };
+}
+
+// Подсчёт циклов замерзания/оттаивания за период
+function analyzeFreezeThawCycles(hourly) {
+    const temps = hourly.temperature_2m || [];
+    let cycles = 0;
+    let wasAbove = null;
+    for (const t of temps) {
+        if (t === undefined || t === null) continue;
+        const isAbove = t > 0;
+        if (wasAbove !== null && isAbove !== wasAbove) cycles++;
+        wasAbove = isAbove;
+    }
+    return Math.floor(cycles / 2);
+}
+
+
 function calculateSurfaceCoverage(precipAnalysis, dryingAnalysis) {
     const residual = dryingAnalysis.residualWater;
     let description, mainCoverage;
@@ -2729,7 +2884,7 @@ function calculateSurfaceCoverage(precipAnalysis, dryingAnalysis) {
 // Определение состояния поверхности на основе расширенных данных
 function determineAdvancedSurfaceCondition(data) {
     const { precipAnalysis, dryingAnalysis, hourly } = data;
-    const nowIdx = Math.min(23, (hourly.temperature_2m || []).length - 7);
+    const nowIdx = Math.min(71, (hourly.temperature_2m || []).length - 7);
     const codes = hourly.weathercode || [];
     const currentCode = codes[nowIdx] || 0;
 
@@ -2898,7 +3053,7 @@ function determineAdvancedSurfaceCondition(data) {
 
 // Прогноз изменения состояния поверхности на 6 часов
 function forecastSurfaceChange(hourlyData, currentCondition) {
-    const nowIdx = Math.min(23, (hourlyData.temperature_2m || []).length - 7);
+    const nowIdx = Math.min(71, (hourlyData.temperature_2m || []).length - 7);
     const precip = hourlyData.precipitation || [];
 
     let futureRain = 0;
@@ -3829,6 +3984,53 @@ function displayFullInfo(data) {
                 📊 ПОЛНАЯ ИНФОРМАЦИЯ О ПОВЕРХНОСТИ →
             </button>
         </div>` : ''}
+
+        ${data.surfaceCondition?.microclimate ? `
+        <div class="info-section">
+            <div class="info-section-title">🌍 МИКРОКЛИМАТ</div>
+            <div class="info-row">
+                <span class="info-label">Местность:</span>
+                <span class="info-value">${escapeHtml(data.surfaceCondition.microclimate.locationLabel)}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Поправка температуры:</span>
+                <span class="info-value">${data.surfaceCondition.microclimate.urbanHeatIsland >= 0 ? '+' : ''}${data.surfaceCondition.microclimate.urbanHeatIsland}°C</span>
+            </div>
+        </div>
+        ` : ''}
+
+        ${data.surfaceCondition?.seasonalRisks?.length > 0 ? `
+        <div class="info-section">
+            <div class="info-section-title">🍂 СЕЗОННЫЕ РИСКИ</div>
+            ${data.surfaceCondition.seasonalRisks.map(r => `
+            <div class="info-row alert-${escapeHtml(r.severity)}">
+                <span class="info-label">${r.icon}</span>
+                <span class="info-value">${escapeHtml(r.text)}</span>
+            </div>`).join('')}
+        </div>
+        ` : ''}
+
+        ${data.surfaceCondition?.frictionCoef ? `
+        <div class="info-section">
+            <div class="info-section-title">🚗 ТОРМОЗНОЙ ПУТЬ</div>
+            <div class="info-row">
+                <span class="info-label">Коэффициент трения (μ):</span>
+                <span class="info-value">${data.surfaceCondition.frictionCoef}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">60 км/ч:</span>
+                <span class="info-value">${data.surfaceCondition.brakingDistances?.at60kmh?.totalDistance ?? '—'} м</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">90 км/ч:</span>
+                <span class="info-value">${data.surfaceCondition.brakingDistances?.at90kmh?.totalDistance ?? '—'} м</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">120 км/ч:</span>
+                <span class="info-value">${data.surfaceCondition.brakingDistances?.at120kmh?.totalDistance ?? '—'} м</span>
+            </div>
+        </div>
+        ` : ''}
 
         ${data.fireRisk && data.fireRisk.level !== 'low' ? `
         <div class="info-section">
