@@ -2090,3 +2090,114 @@ body {
     font-size: 18px;
     flex-shrink: 0;
 }
+
+/* ===== ФУНКЦИОНАЛ ШАРИНГА ===== */
+
+.share-info {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.share-coords {
+    text-align: center;
+    padding: 15px;
+    background: rgba(0, 255, 0, 0.1);
+    border: 1px solid rgba(0, 255, 0, 0.3);
+    border-radius: 5px;
+    font-size: 14px;
+    color: #00ff00;
+    text-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+}
+
+.share-link-container {
+    display: flex;
+    gap: 10px;
+}
+
+.share-input {
+    flex: 1;
+    padding: 12px 15px;
+    background: rgba(0, 255, 0, 0.05);
+    border: 2px solid #00ff00;
+    border-radius: 5px;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    outline: none;
+    transition: all 0.3s;
+}
+
+.share-input:focus {
+    background: rgba(0, 255, 0, 0.1);
+    box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+}
+
+.share-copy-btn {
+    padding: 12px 20px;
+    background: rgba(0, 255, 0, 0.2);
+    border: 2px solid #00ff00;
+    border-radius: 5px;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.3s;
+    white-space: nowrap;
+}
+
+.share-copy-btn:hover {
+    background: #00ff00;
+    color: #000;
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.8);
+}
+
+.share-copy-btn.copied {
+    background: #00ff00;
+    color: #000;
+    animation: copyPulse 0.5s ease;
+}
+
+@keyframes copyPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
+.share-qr {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+    background: rgba(0, 255, 0, 0.05);
+    border: 1px dashed rgba(0, 255, 0, 0.3);
+    border-radius: 5px;
+    min-height: 150px;
+}
+
+.share-qr canvas {
+    border: 5px solid #00ff00;
+    border-radius: 5px;
+    box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+}
+
+.share-qr-placeholder {
+    color: #00aa00;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* Мобильная адаптация */
+@media (max-width: 768px) {
+    .share-link-container {
+        flex-direction: column;
+    }
+    
+    .share-copy-btn {
+        width: 100%;
+    }
+    
+    .share-input {
+        font-size: 10px;
+    }
+}

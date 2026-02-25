@@ -4354,3 +4354,220 @@ function setupMobileEventListeners() {
 
 setupMobileEventListeners();
 initMobileMode();
+
+// ===== ФУНКЦИОНАЛ ШАРИНГА ЛОКАЦИИ =====
+
+// Функция для кодирования данных в URL
+function encodeLocationData(lat, lng, data) {
+    const locationData = {
+        lat: lat.toFixed(6),
+        lng: lng.toFixed(6),
+        timestamp: new Date().toISOString(),
+        data: data ? {
+            address: data.address || '',
+            city: data.city || '',
+            country: data.country || '',
+            temp: data.temp || '',
+            weather: data.weather || '',
+            timezone: data.timezone || ''
+        } : null
+    };
+    
+    return btoa(encodeURIComponent(JSON.stringify(locationData)));
+}
+
+// Функция для декодирования данных из URL
+function decodeLocationData(encodedData) {
+    try {
+        const decoded = decodeURIComponent(atob(encodedData));
+        return JSON.parse(decoded);
+    } catch (e) {
+        console.error('Ошибка декодирования данных:', e);
+        return null;
+    }
+}
+
+// Функция открытия модального окна шаринга
+function shareLocation() {
+    if (!lastScannedCoords) {
+        alert('❌ Сначала выберите точку на карте!');
+        return;
+    }
+    
+    const { lat, lng } = lastScannedCoords;
+    const encodedData = encodeLocationData(lat, lng, currentMarkerData);
+    const shareUrl = `${window.location.origin}${window.location.pathname}?share=${encodedData}`;
+    
+    // Обновляем координаты
+    document.getElementById('shareCoords').innerHTML = `
+        <strong>📍 КООРДИНАТЫ:</strong><br>
+        Широта: ${lat.toFixed(6)}° | Долгота: ${lng.toFixed(6)}
+    `;
+    
+    // Обновляем поле с ссылкой
+    document.getElementById('shareLinkInput').value = shareUrl;
+    
+    // Генерируем QR-код
+    generateQRCode(shareUrl);
+    
+    // Показываем модальное окно
+    document.getElementById('shareModal').classList.add('active');
+}
+
+// Функция закрытия модального окна шаринга
+function closeShareModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('shareModal').classList.remove('active');
+}
+
+// Функция копирования ссылки
+function copyShareLink() {
+    const input = document.getElementById('shareLinkInput');
+    const btn = document.querySelector('.share-copy-btn');
+    const btnText = document.getElementById('copyBtnText');
+    
+    input.select();
+    input.setSelectionRange(0, 99999); // Для мобильных устройств
+    
+    navigator.clipboard.writeText(input.value).then(() => {
+        btnText.textContent = '✅ СКОПИРОВАНО!';
+        btn.classList.add('copied');
+        
+        setTimeout(() => {
+            btnText.textContent = '📋 КОПИРОВАТЬ';
+            btn.classList.remove('copied');
+        }, 2000);
+    }).catch(err => {
+        console.error('Ошибка копирования:', err);
+        alert('❌ Не удалось скопировать ссылку');
+    });
+}
+
+// Функция генерации QR-кода (упрощенная версия)
+function generateQRCode(url) {
+    const qrContainer = document.getElementById('shareQR');
+    
+    // Очищаем контейнер
+    qrContainer.innerHTML = '<div class="share-qr-placeholder">🔲 QR-код будет здесь<br><small>Подключите библиотеку QRCode.js для отображения</small></div>';
+    
+    // Если доступна библиотека qrcode.js, генерируем QR
+    if (typeof QRCode !== 'undefined') {
+        qrContainer.innerHTML = '';
+        new QRCode(qrContainer, {
+            text: url,
+            width: 200,
+            height: 200,
+            colorDark: '#00ff00',
+            colorLight: '#000000',
+            correctLevel: QRCode.CorrectLevel.H
+        });
+    }
+}
+
+// Функция обработки shared-ссылки при загрузке страницы
+function handleSharedLocation() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const sharedData = urlParams.get('share');
+    
+    if (!sharedData) return;
+    
+    const locationData = decodeLocationData(sharedData);
+    if (!locationData) {
+        alert('❌ Неверная ссылка для шаринга');
+        return;
+    }
+    
+    const lat = parseFloat(locationData.lat);
+    const lng = parseFloat(locationData.lng);
+    
+    // Центрируем карту на переданных координатах
+    map.setView([lat, lng], 15);
+    
+    // Сканируем локацию
+    setTimeout(() => {
+        scanLocation(lat, lng);
+    }, 500);
+    
+    // Показываем уведомление
+    showNotification(`
+        📍 Загружена shared-локация<br>
+        <small>${locationData.data?.city || 'Неизвестный город'}</small><br>
+        <small>Поделились: ${new Date(locationData.timestamp).toLocaleString('ru-RU')}</small>
+    `);
+}
+
+// Функция показа уведомлений
+function showNotification(message) {
+    const notification = document.createElement('div');
+    notification.className = 'share-notification';
+    notification.innerHTML = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => notification.classList.add('show'), 100);
+    
+    setTimeout(() => {
+        notification.classList.remove('show');
+        setTimeout(() => notification.remove(), 300);
+    }, 5000);
+}
+
+// Обновляем функцию scanLocation для активации кнопки "Поделиться"
+const originalScanLocation = window.scanLocation;
+window.scanLocation = async function(lat, lng) {
+    await originalScanLocation(lat, lng);
+    
+    // Активируем кнопку "Поделиться"
+    const shareBtn = document.getElementById('shareBtn');
+    if (shareBtn) {
+        shareBtn.disabled = false;
+    }
+};
+
+// Инициализация при загрузке страницы
+// Добавляем обработчик для закрытия модального окна по Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeShareModal();
+    }
+});
+
+// Добавляем стили для уведомлений
+const notificationStyles = document.createElement('style');
+notificationStyles.textContent = `
+.share-notification {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 10000;
+    background: linear-gradient(135deg, #001a00 0%, #003300 100%);
+    border: 2px solid #00ff00;
+    border-radius: 8px;
+    padding: 20px;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    box-shadow: 0 0 30px rgba(0, 255, 0, 0.5);
+    transform: translateX(400px);
+    opacity: 0;
+    transition: all 0.3s ease;
+    max-width: 300px;
+    text-align: center;
+}
+
+.share-notification.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+@media (max-width: 768px) {
+    .share-notification {
+        right: 10px;
+        left: 10px;
+        max-width: none;
+        top: 70px;
+    }
+}
+`;
+document.head.appendChild(notificationStyles);
+
+handleSharedLocation();

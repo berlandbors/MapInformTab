@@ -6,6 +6,8 @@
     <title>Интерактивная карта - Полный мониторинг</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="styles.css">
+    <!-- Библиотека для генерации QR-кодов -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
     <!-- Мобильный переключатель табов (только для смартфонов в портретной ориентации) -->
@@ -86,6 +88,7 @@
 
             <div class="controls">
                 <button class="control-btn" onclick="getCurrentLocation()">[ 📍 МОЯ ГЕОПОЗИЦИЯ ]</button>
+                <button class="control-btn" onclick="shareLocation()" id="shareBtn" disabled>[ 🔗 ПОДЕЛИТЬСЯ ЛОКАЦИЕЙ ]</button>
                 <button class="control-btn" onclick="clearMarkers()">[ ✖ ОЧИСТИТЬ ВСЕ ]</button>
             </div>
             
@@ -139,5 +142,28 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
     <script src="script.js"></script>
+
+    <!-- Модальное окно для шаринга -->
+    <div class="modal-overlay" id="shareModal" onclick="closeShareModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()" style="max-width: 600px;">
+            <div class="modal-header">
+                <button class="modal-close" onclick="closeShareModal()">&times;</button>
+                <div class="modal-title">&gt;&gt;&gt; ПОДЕЛИТЬСЯ ЛОКАЦИЕЙ &lt;&lt;&lt;</div>
+                <div class="modal-subtitle">Скопируйте ссылку для передачи данных</div>
+            </div>
+            <div class="modal-body">
+                <div class="share-info">
+                    <div class="share-coords" id="shareCoords"></div>
+                    <div class="share-link-container">
+                        <input type="text" id="shareLinkInput" class="share-input" readonly>
+                        <button class="share-copy-btn" onclick="copyShareLink()">
+                            <span id="copyBtnText">📋 КОПИРОВАТЬ</span>
+                        </button>
+                    </div>
+                    <div class="share-qr" id="shareQR"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
