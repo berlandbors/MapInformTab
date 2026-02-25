@@ -731,7 +731,11 @@ function openModal(data) {
             </div>
             <div class="modal-row">
                 <span class="modal-label">Покрытие:</span>
-                <span class="modal-value">${data.surfaceCondition.coverage}</span>
+                <span class="modal-value">${data.surfaceCondition.surfaceTypeAdv?.label || data.surfaceCondition.surfaceType?.label || 'Асфальт'}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Состояние покрытия:</span>
+                <span class="modal-value">${data.surfaceCondition.coverage?.description || data.surfaceCondition.coverage}</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">Тормозной путь:</span>
@@ -3614,16 +3618,16 @@ function determineSurfaceType(roadTypeRaw) {
 function determineSurfaceTypeAdvanced(surfaceOSM) {
     const s = (surfaceOSM || '').toLowerCase();
     const types = {
-        asphalt:       { frictionDry: 0.80, frictionWet: 0.55, frictionSnow: 0.30, frictionIce: 0.15, porosity: 0.05, drainage: 'good',      dryingSpeed: 1.0, label: 'Асфальт' },
-        concrete:      { frictionDry: 0.80, frictionWet: 0.60, frictionSnow: 0.35, frictionIce: 0.18, porosity: 0.03, drainage: 'good',      dryingSpeed: 0.9, label: 'Бетон' },
-        paving_stones: { frictionDry: 0.70, frictionWet: 0.45, frictionSnow: 0.25, frictionIce: 0.12, porosity: 0.10, drainage: 'moderate',  dryingSpeed: 1.2, label: 'Плитка' },
-        cobblestone:   { frictionDry: 0.65, frictionWet: 0.40, frictionSnow: 0.22, frictionIce: 0.10, porosity: 0.15, drainage: 'moderate',  dryingSpeed: 1.3, label: 'Брусчатка' },
-        gravel:        { frictionDry: 0.60, frictionWet: 0.50, frictionSnow: 0.40, frictionIce: 0.20, porosity: 0.35, drainage: 'good',      dryingSpeed: 1.5, label: 'Гравий' },
-        dirt:          { frictionDry: 0.55, frictionWet: 0.25, frictionSnow: 0.30, frictionIce: 0.15, porosity: 0.40, drainage: 'poor',      dryingSpeed: 0.5, label: 'Грунт' },
-        grass:         { frictionDry: 0.50, frictionWet: 0.30, frictionSnow: 0.35, frictionIce: 0.18, porosity: 0.50, drainage: 'poor',      dryingSpeed: 0.4, label: 'Трава' },
-        wood:          { frictionDry: 0.65, frictionWet: 0.30, frictionSnow: 0.20, frictionIce: 0.10, porosity: 0.05, drainage: 'poor',      dryingSpeed: 0.6, label: 'Дерево' },
-        paved:         { frictionDry: 0.75, frictionWet: 0.50, frictionSnow: 0.28, frictionIce: 0.14, porosity: 0.08, drainage: 'good',      dryingSpeed: 1.0, label: 'Мощёное' },
-        unpaved:       { frictionDry: 0.55, frictionWet: 0.30, frictionSnow: 0.35, frictionIce: 0.18, porosity: 0.40, drainage: 'poor',      dryingSpeed: 0.5, label: 'Немощёное' }
+        asphalt:       { frictionDry: 0.80, frictionWet: 0.55, frictionSnow: 0.30, frictionIce: 0.15, porosity: 0.05, drainage: 'good',      dryingSpeed: 1.0, label: 'Асфальт',    material: 'Битумное вяжущее',      texture: 'medium' },
+        concrete:      { frictionDry: 0.80, frictionWet: 0.60, frictionSnow: 0.35, frictionIce: 0.18, porosity: 0.03, drainage: 'good',      dryingSpeed: 0.9, label: 'Бетон',      material: 'Цементобетон',          texture: 'smooth' },
+        paving_stones: { frictionDry: 0.70, frictionWet: 0.45, frictionSnow: 0.25, frictionIce: 0.12, porosity: 0.10, drainage: 'moderate',  dryingSpeed: 1.2, label: 'Плитка',     material: 'Тротуарная плитка',     texture: 'rough' },
+        cobblestone:   { frictionDry: 0.65, frictionWet: 0.40, frictionSnow: 0.22, frictionIce: 0.10, porosity: 0.15, drainage: 'moderate',  dryingSpeed: 1.3, label: 'Брусчатка',  material: 'Натуральный камень',    texture: 'very_rough' },
+        gravel:        { frictionDry: 0.60, frictionWet: 0.50, frictionSnow: 0.40, frictionIce: 0.20, porosity: 0.35, drainage: 'good',      dryingSpeed: 1.5, label: 'Гравий',     material: 'Гравий и щебень',       texture: 'very_rough' },
+        dirt:          { frictionDry: 0.55, frictionWet: 0.25, frictionSnow: 0.30, frictionIce: 0.15, porosity: 0.40, drainage: 'poor',      dryingSpeed: 0.5, label: 'Грунт',      material: 'Грунт',                 texture: 'rough' },
+        grass:         { frictionDry: 0.50, frictionWet: 0.30, frictionSnow: 0.35, frictionIce: 0.18, porosity: 0.50, drainage: 'poor',      dryingSpeed: 0.4, label: 'Трава',      material: 'Растительный покров',   texture: 'rough' },
+        wood:          { frictionDry: 0.65, frictionWet: 0.30, frictionSnow: 0.20, frictionIce: 0.10, porosity: 0.05, drainage: 'poor',      dryingSpeed: 0.6, label: 'Дерево',     material: 'Древесина',             texture: 'medium' },
+        paved:         { frictionDry: 0.75, frictionWet: 0.50, frictionSnow: 0.28, frictionIce: 0.14, porosity: 0.08, drainage: 'good',      dryingSpeed: 1.0, label: 'Мощёное',    material: 'Мощёное покрытие',      texture: 'medium' },
+        unpaved:       { frictionDry: 0.55, frictionWet: 0.30, frictionSnow: 0.35, frictionIce: 0.18, porosity: 0.40, drainage: 'poor',      dryingSpeed: 0.5, label: 'Немощёное',  material: 'Грунт',                 texture: 'rough' }
     };
     return types[s] || types['asphalt'];
 }
@@ -4874,6 +4878,28 @@ function displayFullInfo(data) {
                 <span class="info-value">${data.roadType}</span>
             </div>
             <div class="info-row">
+                <span class="info-label">Покрытие:</span>
+                <span class="info-value">${data.surfaceCondition?.surfaceTypeAdv?.label || data.surfaceCondition?.surfaceType?.label || 'Асфальт'}</span>
+            </div>
+            ${data.surfaceCondition?.surfaceTypeAdv ? `
+            <div class="info-row">
+                <span class="info-label">Материал:</span>
+                <span class="info-value">${escapeHtml(data.surfaceCondition.surfaceTypeAdv.material)}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Дренаж:</span>
+                <span class="info-value">${getDrainageName(data.surfaceCondition.surfaceTypeAdv.drainage)}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Пористость:</span>
+                <span class="info-value">${Math.round(data.surfaceCondition.surfaceTypeAdv.porosity * 100)}%</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Текстура:</span>
+                <span class="info-value">${getTextureName(data.surfaceCondition.surfaceTypeAdv.texture)}</span>
+            </div>
+            ` : ''}
+            <div class="info-row">
                 <span class="info-label">Трафик:</span>
                 <span class="info-value">
                     <span class="status-indicator ${trafficStatus}"></span>${data.traffic}
@@ -4954,7 +4980,7 @@ function displayFullInfo(data) {
                 <div class="impact-grid">
                     <div class="impact-item"><span>🚦 Тормоза</span><span>+${data.surfaceCondition.brakeIncrease}%</span></div>
                     <div class="impact-item"><span>🚗 Скорость</span><span>-${data.surfaceCondition.speedReduction}%</span></div>
-                    <div class="impact-item"><span>📏 Покрытие</span><span>${data.surfaceCondition.coverage}</span></div>
+                    <div class="impact-item"><span>📏 Покрытие</span><span>${data.surfaceCondition.coverage?.description || data.surfaceCondition.coverage}</span></div>
                 </div>
             </div>
             <button class="surface-detail-btn" onclick="showDetailedSurfaceModal()">
