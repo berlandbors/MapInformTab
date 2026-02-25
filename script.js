@@ -160,14 +160,30 @@ async function scanLocation(lat, lng, isRescan = false) {
     showLoading();
 
     try {
-        const [weatherData, locationData, roadData, pedestrianData, seismicData, timezoneData] = await Promise.all([
-            getWeatherData(lat, lng),
+        // 1. Многоточечный анализ погоды
+        let weatherData = await getWeatherDataMultiPoint(lat, lng);
+
+        // 2. METAR (если есть рядом аэропорт)
+        const metarData = await getMETARData(lat, lng);
+        weatherData = mergeWeatherData(weatherData, metarData);
+
+        // 3. Остальные данные
+        const [locationData, roadData, pedestrianData, seismicData, timezoneData] = await Promise.all([
             getLocationData(lat, lng),
             getRoadData(lat, lng),
             getPedestrianData(lat, lng),
             getSeismicData(lat, lng),
             getTimezoneData(lat, lng)
         ]);
+
+        // 4. ML-коррекции
+        weatherData = applyMLCorrections(weatherData, locationData, timezoneData);
+
+        // 5. Уровни уверенности
+        const confidence = calculateConfidenceLevels(weatherData, weatherData.accuracy, metarData);
+
+        // 6. Сохранить историю
+        saveWeatherHistory(weatherData);
 
         const astronomyData = getAstronomyData(lat, lng, weatherData.timezone);
         const alertsData = getWeatherAlerts(weatherData.weatherCode, weatherData.precipProbability);
@@ -181,6 +197,8 @@ async function scanLocation(lat, lng, isRescan = false) {
             ...astronomyData,
             ...alertsData,
             ...timezoneData,
+            confidence,
+            metarData,
             id: markerCount,
             scanTime: new Date().toLocaleString('ru-RU')
         };
@@ -974,6 +992,333 @@ async function getWeatherData(lat, lng) {
             longitude: Math.round(lng * 10000) / 10000
         };
     }
+}
+
+// Вспомогательная функция: одиночный запрос к Open-Meteo
+async function getWeatherDataSingle(lat, lng) {
+    return getWeatherData(lat, lng);
+}
+
+// Расчёт стандартного отклонения по результатам нескольких точек
+function calculateStandardDeviation(results, mean) {
+    const n = results.length;
+    const variance = { temp: 0, precipitation: 0, windSpeed: 0 };
+
+    results.forEach(r => {
+        variance.temp += Math.pow(r.temp - mean.temp, 2);
+        variance.precipitation += Math.pow(r.precipitation - mean.precipitation, 2);
+        variance.windSpeed += Math.pow(r.windSpeed - mean.windSpeed, 2);
+    });
+
+    return {
+        temp: Math.round(Math.sqrt(variance.temp / n) * 10) / 10,
+        precipitation: Math.round(Math.sqrt(variance.precipitation / n) * 100) / 100,
+        windSpeed: Math.round(Math.sqrt(variance.windSpeed / n) * 10) / 10
+    };
+}
+
+// Получение погоды с усреднением по 5 точкам
+async function getWeatherDataMultiPoint(lat, lng) {
+    console.log('🌐 Многоточечный анализ погоды...');
+
+    const offset = 0.025; // ~2.5 км
+    const points = [
+        { lat, lng, weight: 0.5 },
+        { lat: lat + offset, lng, weight: 0.125 },
+        { lat: lat - offset, lng, weight: 0.125 },
+        { lat, lng: lng + offset, weight: 0.125 },
+        { lat, lng: lng - offset, weight: 0.125 }
+    ];
+
+    try {
+        const results = await Promise.all(
+            points.map(p => getWeatherDataSingle(p.lat, p.lng))
+        );
+
+        const weighted = {
+            temp: 0, feelsLike: 0, humidity: 0, windSpeed: 0,
+            pressure: 0, precipitation: 0, cloudCover: 0, visibility: 0
+        };
+
+        results.forEach((data, i) => {
+            const w = points[i].weight;
+            weighted.temp += data.temp * w;
+            weighted.feelsLike += data.feelsLike * w;
+            weighted.humidity += data.humidity * w;
+            weighted.windSpeed += data.windSpeed * w;
+            weighted.pressure += data.pressure * w;
+            weighted.precipitation += data.precipitation * w;
+            weighted.cloudCover += data.cloudCover * w;
+            weighted.visibility += data.visibility * w;
+        });
+
+        const stdDev = calculateStandardDeviation(results, weighted);
+
+        return {
+            ...results[0],
+            temp: Math.round(weighted.temp),
+            feelsLike: Math.round(weighted.feelsLike),
+            humidity: Math.round(weighted.humidity),
+            windSpeed: Math.round(weighted.windSpeed * 10) / 10,
+            pressure: Math.round(weighted.pressure),
+            precipitation: Math.round(weighted.precipitation * 10) / 10,
+            cloudCover: Math.round(weighted.cloudCover),
+            visibility: Math.round(weighted.visibility * 10) / 10,
+            accuracy: {
+                tempStdDev: stdDev.temp,
+                precipStdDev: stdDev.precipitation,
+                windStdDev: stdDev.windSpeed,
+                dataPoints: results.length,
+                method: 'multi-point-weighted'
+            }
+        };
+    } catch (error) {
+        console.error('Ошибка многоточечного анализа:', error);
+        return getWeatherDataSingle(lat, lng);
+    }
+}
+
+// Расстояние между точками (Haversine), км
+function getDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
+// Парсинг облачности из METAR
+function parseCloudCover(cover) {
+    const mapping = { 'CLR': 0, 'SKC': 0, 'FEW': 20, 'SCT': 50, 'BKN': 75, 'OVC': 100 };
+    return cover ? mapping[cover] ?? null : null;
+}
+
+// Парсинг данных METAR
+function parseMETAR(metar) {
+    return {
+        temp: metar.temp ?? null,
+        dewpoint: metar.dewp ?? null,
+        pressure: metar.altim ? Math.round(metar.altim * 33.8639) : null,
+        windSpeed: metar.wspd ? Math.round(metar.wspd * 0.514444) : null,
+        windDir: metar.wdir ?? null,
+        visibility: metar.visib ? metar.visib * 1.60934 : null,
+        weatherCode: metar.wxString ?? null,
+        cloudCover: parseCloudCover(metar.cover) ?? null,
+        obsTime: metar.obsTime,
+        stationId: metar.icaoId,
+        distance: Math.round(metar.distance),
+        source: 'METAR',
+        reliability: 0.95
+    };
+}
+
+// Получение данных с ближайшего аэропорта (METAR)
+async function getMETARData(lat, lng) {
+    console.log('✈️ Запрос данных METAR...');
+    try {
+        const airportUrl = `https://aviationweather.gov/api/data/metar?bbox=${lng - 1},${lat - 1},${lng + 1},${lat + 1}&format=json`;
+        const response = await fetch(airportUrl);
+        if (!response.ok) throw new Error(`METAR API error: ${response.status}`);
+
+        const airports = await response.json();
+        if (!airports || airports.length === 0) {
+            console.log('  ⚠️ Нет аэропортов в радиусе 100 км');
+            return null;
+        }
+
+        const nearest = airports.reduce((closest, airport) => {
+            const dist = getDistance(lat, lng, airport.lat, airport.lon);
+            return (!closest || dist < closest.distance) ? { ...airport, distance: dist } : closest;
+        }, null);
+
+        if (nearest.distance > 100) {
+            console.log(`  ⚠️ Ближайший аэропорт слишком далеко: ${nearest.distance} км`);
+            return null;
+        }
+
+        console.log(`  ✅ METAR от ${nearest.icaoId} (${Math.round(nearest.distance)} км)`);
+        return parseMETAR(nearest);
+    } catch (error) {
+        console.error('Ошибка получения METAR:', error);
+        return null;
+    }
+}
+
+// Слияние данных Open-Meteo с METAR
+function mergeWeatherData(openMeteo, metar) {
+    if (!metar) return openMeteo;
+    console.log(`  🔀 Слияние данных: Open-Meteo + METAR (${metar.stationId})`);
+    return {
+        ...openMeteo,
+        temp: metar.temp ?? openMeteo.temp,
+        pressure: metar.pressure ?? openMeteo.pressure,
+        windSpeed: metar.windSpeed ?? openMeteo.windSpeed,
+        windDir: metar.windDir ?? openMeteo.windDir,
+        visibility: metar.visibility ?? openMeteo.visibility,
+        cloudCover: metar.cloudCover ?? openMeteo.cloudCover,
+        metarStation: metar.stationId,
+        metarDistance: metar.distance,
+        metarTime: metar.obsTime,
+        dataSource: 'hybrid'
+    };
+}
+
+// Оценка уверенности для одного параметра
+function assessConfidence({ stdDev, hasMETAR, parameter, value }) {
+    let score = 50;
+    let level = 'medium';
+    let margin = null;
+    let source = 'model';
+
+    if (hasMETAR) { score += 40; source = 'measured'; }
+
+    if (stdDev !== undefined && stdDev !== null) {
+        if (parameter === 'temp') {
+            if (stdDev < 1) score += 10;
+            else if (stdDev > 3) score -= 20;
+            margin = `±${Math.ceil(stdDev * 2)}°C`;
+        } else if (parameter === 'precipitation') {
+            if (stdDev < 0.5) score += 10;
+            else if (stdDev > 2) score -= 20;
+            margin = `±${Math.ceil(stdDev * 2 * 100)}%`;
+        } else if (parameter === 'windSpeed') {
+            if (stdDev < 1) score += 10;
+            else if (stdDev > 3) score -= 20;
+            margin = `±${Math.ceil(stdDev * 2)} м/с`;
+        }
+    }
+
+    if (parameter === 'precipitation' && value === 0) score -= 10;
+    if (parameter === 'visibility' && !hasMETAR) score -= 20;
+
+    score = Math.max(0, Math.min(100, score));
+
+    if (score >= 80) level = 'high';
+    else if (score >= 60) level = 'medium';
+    else if (score >= 40) level = 'low';
+    else level = 'very_low';
+
+    return {
+        score, level, margin, source,
+        icon: getConfidenceIcon(level),
+        label: getConfidenceLabel(level)
+    };
+}
+
+function getConfidenceIcon(level) {
+    return { 'high': '🟢', 'medium': '🟡', 'low': '🟠', 'very_low': '🔴' }[level] || '⚪';
+}
+
+function getConfidenceLabel(level) {
+    return { 'high': 'Высокая', 'medium': 'Средняя', 'low': 'Низкая', 'very_low': 'Очень низкая' }[level] || 'Неизвестно';
+}
+
+// Расчёт уровней уверенности для каждого параметра
+function calculateConfidenceLevels(weatherData, accuracy, metar) {
+    return {
+        temp: assessConfidence({ stdDev: accuracy?.tempStdDev, hasMETAR: !!metar?.temp, parameter: 'temp', value: weatherData.temp }),
+        precipitation: assessConfidence({ stdDev: accuracy?.precipStdDev, hasMETAR: false, parameter: 'precipitation', value: weatherData.precipitation }),
+        windSpeed: assessConfidence({ stdDev: accuracy?.windStdDev, hasMETAR: !!metar?.windSpeed, parameter: 'windSpeed', value: weatherData.windSpeed }),
+        pressure: assessConfidence({ stdDev: 0.5, hasMETAR: !!metar?.pressure, parameter: 'pressure', value: weatherData.pressure }),
+        visibility: assessConfidence({ stdDev: 2, hasMETAR: !!metar?.visibility, parameter: 'visibility', value: weatherData.visibility })
+    };
+}
+
+// Фактор ветра по типу местности
+function getTerrainWindFactor(locationData) {
+    const location = ((locationData.city || '') + ' ' + (locationData.district || '')).toLowerCase();
+    if (location.includes('лес')) return 0.6;
+    if (location.includes('горы') || location.includes('mountain')) return 1.3;
+    if (location.includes('поле') || location.includes('степь')) return 1.1;
+    return 1.0;
+}
+
+// Байесовская коррекция осадков
+function bayesianPrecipitationCorrection(precip, probability, cloudCover) {
+    if (precip === 0 && probability > 70 && cloudCover > 80) {
+        const corrected = 0.5;
+        console.log(`  🌧️ Байесовская коррекция осадков: 0 → ${corrected} мм/ч`);
+        return corrected;
+    }
+    if (precip > 0 && probability < 30) {
+        const corrected = precip * 0.5;
+        console.log(`  🌧️ Байесовская коррекция осадков: ${precip} → ${corrected} мм/ч (низкая вероятность)`);
+        return corrected;
+    }
+    return precip;
+}
+
+// Калман-фильтр для сглаживания температуры
+function kalmanFilter(measurement, history) {
+    if (history.length === 0) return measurement;
+    const lastEstimate = history[history.length - 1].temp;
+    const processNoise = 0.5;
+    const measurementNoise = 1.5;
+    const kalmanGain = processNoise / (processNoise + measurementNoise);
+    const estimate = lastEstimate + kalmanGain * (measurement - lastEstimate);
+    return Math.round(estimate * 10) / 10;
+}
+
+// Сохранение истории для Калман-фильтра
+function saveWeatherHistory(weatherData) {
+    if (!window.weatherHistory) window.weatherHistory = [];
+    window.weatherHistory.push({ temp: weatherData.temp, time: Date.now() });
+    if (window.weatherHistory.length > 10) window.weatherHistory.shift();
+}
+
+// Применение ML-коррекций
+function applyMLCorrections(weatherData, locationData, timeData) {
+    console.log('🤖 Применение ML-коррекций...');
+    const corrected = { ...weatherData };
+
+    // 1. Высотная коррекция температуры
+    if (weatherData.elevation) {
+        const altitudeCorrection = -0.0065 * weatherData.elevation;
+        corrected.temp += altitudeCorrection;
+        corrected.tempCorrectionAltitude = Math.round(altitudeCorrection * 10) / 10;
+        console.log(`  📐 Высотная поправка: ${corrected.tempCorrectionAltitude}°C`);
+    }
+
+    // 2. Городской тепловой остров (ночь)
+    if (locationData && locationData.city && locationData.city !== 'Нет данных') {
+        const isNight = timeData?.dayPhase?.includes('Ночь');
+        if (isNight) {
+            const urbanCorrection = 1.5;
+            corrected.temp += urbanCorrection;
+            corrected.tempCorrectionUrban = urbanCorrection;
+            console.log(`  🏙️ Городская поправка (ночь): +${urbanCorrection}°C`);
+        }
+    }
+
+    // 3. Предупреждение: сильная облачность без осадков
+    if (weatherData.cloudCover > 80 && weatherData.precipitation === 0) {
+        corrected.precipitationWarning = 'Возможны слабые осадки (не обнаружены моделью)';
+        console.log(`  ⚠️ Предупреждение: облачность ${weatherData.cloudCover}%, но осадков 0`);
+    }
+
+    // 4. Коррекция ветра по местности
+    const terrainFactor = getTerrainWindFactor(locationData || {});
+    corrected.windSpeed = Math.round(corrected.windSpeed * terrainFactor * 10) / 10;
+    corrected.windCorrectionTerrain = Math.round((terrainFactor - 1) * 100);
+    if (terrainFactor !== 1) {
+        console.log(`  🌬️ Поправка ветра (местность): ${corrected.windCorrectionTerrain > 0 ? '+' : ''}${corrected.windCorrectionTerrain}%`);
+    }
+
+    // 5. Байесовская коррекция осадков
+    corrected.precipitation = bayesianPrecipitationCorrection(
+        weatherData.precipitation, weatherData.precipProbability, weatherData.cloudCover
+    );
+
+    // 6. Калман-фильтр для температуры
+    if (window.weatherHistory && window.weatherHistory.length > 0) {
+        corrected.temp = kalmanFilter(corrected.temp, window.weatherHistory);
+        console.log(`  📊 Калман-фильтр применён`);
+    }
+
+    return corrected;
 }
 
 // Получение геолокационных данных через Nominatim API с retry
@@ -3876,6 +4221,7 @@ function displayFullInfo(data) {
                 <span class="info-label">Температура:</span>
                 <span class="info-value">
                     <span class="status-indicator ${tempStatus}"></span>${data.temp}°C
+                    ${data.confidence?.temp ? `<span class="confidence-badge ${data.confidence.temp.level}">${data.confidence.temp.icon} ${data.confidence.temp.label}${data.confidence.temp.margin ? ` (${data.confidence.temp.margin})` : ''}</span>` : ''}
                 </span>
             </div>
             <div class="info-row">
@@ -3892,16 +4238,26 @@ function displayFullInfo(data) {
             </div>
             <div class="info-row">
                 <span class="info-label">Ветер:</span>
-                <span class="info-value">${data.windSpeed} м/с ${getWindDirection(data.windDir)}</span>
+                <span class="info-value">${data.windSpeed} м/с ${getWindDirection(data.windDir)}${data.confidence?.windSpeed ? ` <span class="confidence-badge ${data.confidence.windSpeed.level}">${data.confidence.windSpeed.icon} ${data.confidence.windSpeed.label}${data.confidence.windSpeed.margin ? ` (${data.confidence.windSpeed.margin})` : ''}</span>` : ''}</span>
             </div>
             <div class="info-row" style="cursor:pointer" onclick="openPressureDetailModal(${JSON.stringify(data.pressureAnalysis).replace(/"/g, '&quot;')}, ${JSON.stringify({pressure: data.pressure}).replace(/"/g, '&quot;')})">
                 <span class="info-label">Давление:</span>
-                <span class="info-value">${data.pressure} гПа (${data.pressureAnalysis.trendIcon} ${data.pressureAnalysis.trend})</span>
+                <span class="info-value">${data.pressure} гПа (${data.pressureAnalysis.trendIcon} ${data.pressureAnalysis.trend})${data.confidence?.pressure ? ` <span class="confidence-badge ${data.confidence.pressure.level}">${data.confidence.pressure.icon} ${data.confidence.pressure.label}</span>` : ''}</span>
             </div>
             ${data.precipitation > 0 ? `
             <div class="info-row">
                 <span class="info-label">Осадки:</span>
-                <span class="info-value">${data.precipitation} мм (${data.precipType})</span>
+                <span class="info-value">${data.precipitation} мм (${data.precipType})${data.confidence?.precipitation ? ` <span class="confidence-badge ${data.confidence.precipitation.level}">${data.confidence.precipitation.icon} ${data.confidence.precipitation.label}${data.confidence.precipitation.margin ? ` (${data.confidence.precipitation.margin})` : ''}</span>` : ''}</span>
+            </div>` : ''}
+            ${data.precipitationWarning ? `
+            <div class="info-row">
+                <span class="info-label">⚠️ Осадки:</span>
+                <span class="info-value">${data.precipitationWarning}</span>
+            </div>` : ''}
+            ${data.metarStation ? `
+            <div class="info-row metar-badge">
+                <span class="info-label">✈️ Данные с аэропорта:</span>
+                <span class="info-value">${data.metarStation} (${data.metarDistance} км)</span>
             </div>` : ''}
         </div>
 
