@@ -216,7 +216,14 @@ async function scanLocation(lat, lng, isRescan = false) {
         console.log(`📊 Анализ давления: ${fullData.pressure} гПа (${fullData.pressureAnalysis.levelName}, ${fullData.pressureAnalysis.trend})`);
 
         // Анализ состояния поверхности (асинхронно через Open-Meteo API)
-        fullData.surfaceCondition = await analyzeSurfaceConditionAdvanced(lat, lng, { ...weatherData, ...roadData }, locationData);
+        fullData.surfaceCondition = await analyzeSurfaceConditionMultiPoint(lat, lng, { ...weatherData, ...roadData }, locationData);
+
+        // Расчёт уверенности в данных о поверхности
+        fullData.surfaceConfidence = calculateSurfaceConfidence(
+            fullData.surfaceCondition,
+            fullData.surfaceCondition.multiPointData?.uniformity,
+            !!fullData.surfaceCondition.soilData
+        );
 
         // Сбор опасностей
         fullData.hazards = collectHazards(fullData);
@@ -2994,6 +3001,114 @@ async function analyzeSurfaceConditionAdvanced(lat, lng, currentWeather, locatio
     }
 }
 
+// Многоточечный анализ поверхности с усреднением и ML-коррекциями
+async function analyzeSurfaceConditionMultiPoint(lat, lng, currentWeather, locationData) {
+    console.log('🌐 Многоточечный анализ поверхности...');
+
+    const offset = 0.01; // ~1 км радиус
+    const points = [
+        { lat, lng, weight: 0.5 },
+        { lat: lat + offset, lng, weight: 0.125 },
+        { lat: lat - offset, lng, weight: 0.125 },
+        { lat, lng: lng + offset, weight: 0.125 },
+        { lat, lng: lng - offset, weight: 0.125 }
+    ];
+
+    try {
+        // Центральная точка — полный анализ; смещённые точки — лёгкий анализ
+        const centerResult = await analyzeSurfaceConditionAdvanced(lat, lng, currentWeather, locationData);
+        const offsetResults = await Promise.all(
+            points.slice(1).map(p => analyzeSinglePointSurface(p.lat, p.lng, currentWeather))
+        );
+
+        // Привести все результаты к единому формату
+        const adaptedResults = [
+            {
+                accRainMm: centerResult.accRainMm || 0,
+                accSnowCm: centerResult.accSnowCm || 0,
+                dryingAnalysis: centerResult.dryingAnalysis || {}
+            },
+            ...offsetResults.filter(r => r !== null).map(r => ({
+                accRainMm: r.precipAnalysis?.total24h || 0,
+                accSnowCm: r.precipAnalysis?.snowTotal24h || 0,
+                dryingAnalysis: r.dryingAnalysis || {}
+            }))
+        ];
+
+        // Взвешенное усреднение
+        const weighted = {
+            accRainMm: 0,
+            accSnowCm: 0,
+            residualWater: 0,
+            dryingHours: 0,
+            evaporationRate: 0
+        };
+
+        adaptedResults.forEach((data, i) => {
+            const w = points[i] ? points[i].weight : 0.125;
+            weighted.accRainMm += (data.accRainMm || 0) * w;
+            weighted.accSnowCm += (data.accSnowCm || 0) * w;
+            weighted.residualWater += (data.dryingAnalysis?.residualWater || 0) * w;
+            weighted.dryingHours += (data.dryingAnalysis?.dryingHours || 0) * w;
+            weighted.evaporationRate += (data.dryingAnalysis?.evaporationRate || 0) * w;
+        });
+
+        // Стандартное отклонение
+        const stdDev = calculateSurfaceStdDev(adaptedResults, weighted);
+
+        // Оценка однородности
+        const uniformity = assessSurfaceUniformity(stdDev);
+
+        // Применить ML-коррекции (существующая функция с правильным порядком аргументов)
+        const corrected = applySurfaceMLCorrections(weighted, locationData, currentWeather, null);
+
+        // Получить данные о почве
+        const soilData = await getSoilConditionData(lat, lng);
+
+        // Пересчитать состояние с учётом коррекций
+        const finalCondition = recalculateSurfaceCondition(corrected, centerResult, soilData);
+
+        // Уровни уверенности
+        const confidence = calculateSurfaceConfidence(
+            { soilMoisture: soilData?.soilMoisture, surfaceTemp: centerResult.dryingAnalysis?.surfaceTemp, evaporationRate: corrected.evaporationRate },
+            { ...uniformity, waterStdDev: uniformity.waterStdDev },
+            !!soilData
+        );
+
+        return {
+            ...finalCondition,
+            confidence,
+            multiPointData: {
+                dataPoints: adaptedResults.length,
+                radius: '1 км',
+                uniformity,
+                stdDev,
+                method: 'multi-point-weighted'
+            },
+            soilData,
+            correctedValues: { ...corrected, mlCorrections: corrected.mlCorrections || [] }
+        };
+    } catch (error) {
+        console.error('Ошибка многоточечного анализа поверхности:', error);
+        return analyzeSurfaceConditionAdvanced(lat, lng, currentWeather, locationData);
+    }
+}
+
+// Пересчёт состояния поверхности с учётом коррекций и данных о почве
+function recalculateSurfaceCondition(corrected, baseResult, soilData) {
+    const result = { ...baseResult };
+    if (result.dryingAnalysis) {
+        result.dryingAnalysis = { ...result.dryingAnalysis };
+        if (corrected.residualWater !== undefined) result.dryingAnalysis.residualWater = Math.round(corrected.residualWater * 100) / 100;
+        if (corrected.dryingHours !== undefined && corrected.dryingHours > 0) result.dryingAnalysis.dryingHours = Math.round(corrected.dryingHours * 10) / 10;
+        if (corrected.evaporationRate !== undefined) result.dryingAnalysis.evaporationRate = Math.round(corrected.evaporationRate * 100) / 100;
+    }
+    if (soilData && soilData.warnings && soilData.warnings.length > 0) {
+        result.soilWarnings = soilData.warnings;
+    }
+    return result;
+}
+
 // Анализ одной точки поверхности (для многоточечного анализа)
 async function analyzeSinglePointSurface(lat, lng, currentWeather) {
     try {
@@ -3040,6 +3155,38 @@ function getVariabilityDescription(level) {
         'high': 'Значительные различия — осторожно!',
         'very_high': 'Крайне неоднородное покрытие — опасно!'
     }[level] || 'Неизвестно';
+}
+
+// Расчёт стандартного отклонения для поверхности
+function calculateSurfaceStdDev(results, mean) {
+    const n = results.length;
+    const variance = { residualWater: 0, dryingHours: 0 };
+    results.forEach(r => {
+        const resWater = r.dryingAnalysis?.residualWater || 0;
+        const dryHours = r.dryingAnalysis?.dryingHours || 0;
+        variance.residualWater += Math.pow(resWater - mean.residualWater, 2);
+        variance.dryingHours += Math.pow(dryHours - mean.dryingHours, 2);
+    });
+    return {
+        residualWater: Math.round(Math.sqrt(variance.residualWater / n) * 100) / 100,
+        dryingHours: Math.round(Math.sqrt(variance.dryingHours / n) * 10) / 10
+    };
+}
+
+// Оценка однородности покрытия
+function assessSurfaceUniformity(stdDev) {
+    const waterStdDev = stdDev.residualWater;
+    let level, label, icon, confidence;
+    if (waterStdDev < 0.5) {
+        level = 'uniform'; label = 'Однородное покрытие'; icon = '✅'; confidence = 95;
+    } else if (waterStdDev < 2) {
+        level = 'moderate'; label = 'Умеренная вариативность'; icon = '🟡'; confidence = 75;
+    } else if (waterStdDev < 5) {
+        level = 'high'; label = 'Высокая вариативность'; icon = '🟠'; confidence = 50;
+    } else {
+        level = 'extreme'; label = 'Крайне высокая вариативность'; icon = '🔴'; confidence = 30;
+    }
+    return { level, label, icon, confidence, waterStdDev: Math.round(waterStdDev * 10) / 10 };
 }
 
 // Преобладающий тип поверхности из многоточечных результатов
@@ -3102,17 +3249,83 @@ function getSoilWarnings(moistureLevel, frozen, walkability) {
     return warnings;
 }
 
+// Получение данных о состоянии почвы через API
+async function getSoilConditionData(lat, lng) {
+    console.log('🌱 Запрос данных о почве...');
+    try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
+            `&current=soil_moisture_0_to_1cm,soil_temperature_0cm` +
+            `&past_hours=24&timezone=auto`;
+        const response = await fetch(url);
+        const data = await response.json();
+        if (!data.current) return null;
+
+        const soilMoisture = data.current.soil_moisture_0_to_1cm ?? 0;
+        const soilTemp = data.current.soil_temperature_0cm ?? null;
+
+        let moistureLevel, walkability, driveability;
+        if (soilMoisture < 10) {
+            moistureLevel = { name: 'Очень сухая', icon: '🏜️', severity: 'good' };
+            walkability = { level: 'excellent', label: 'Отлично', icon: '✅' };
+            driveability = { level: 'excellent', label: 'Отлично', icon: '✅' };
+        } else if (soilMoisture < 20) {
+            moistureLevel = { name: 'Сухая', icon: '🌾', severity: 'good' };
+            walkability = { level: 'good', label: 'Хорошо', icon: '🟢' };
+            driveability = { level: 'good', label: 'Хорошо', icon: '🟢' };
+        } else if (soilMoisture < 30) {
+            moistureLevel = { name: 'Влажная', icon: '🌱', severity: 'moderate' };
+            walkability = { level: 'acceptable', label: 'Приемлемо', icon: '🟡' };
+            driveability = { level: 'difficult', label: 'Затруднено', icon: '🟡' };
+        } else if (soilMoisture < 40) {
+            moistureLevel = { name: 'Мокрая', icon: '💧', severity: 'bad' };
+            walkability = { level: 'poor', label: 'Плохо', icon: '🟠' };
+            driveability = { level: 'very_difficult', label: 'Сильно затруднено', icon: '🟠' };
+        } else {
+            moistureLevel = { name: 'Насыщенная (грязь!)', icon: '🌊', severity: 'critical' };
+            walkability = { level: 'very_poor', label: 'Очень плохо', icon: '🔴' };
+            driveability = { level: 'impassable', label: 'Непроходимо', icon: '🔴' };
+        }
+
+        const isFrozen = soilTemp !== null && soilTemp <= 0;
+        const freezeDepth = isFrozen ? Math.abs(soilTemp) * 2 : 0;
+
+        const warnings = [];
+        if (soilMoisture > 30) warnings.push('⚠️ Обувь может испачкаться');
+        if (soilMoisture > 40) warnings.push('⚠️ Грязь — затруднённая проходимость');
+        if (isFrozen) warnings.push('❄️ Промёрзшая почва');
+
+        return {
+            soilMoisture: Math.round(soilMoisture),
+            soilTemp: soilTemp !== null ? Math.round(soilTemp * 10) / 10 : null,
+            moistureLevel,
+            walkability,
+            driveability,
+            isFrozen,
+            freezeDepth: isFrozen ? Math.round(freezeDepth) : 0,
+            warnings
+        };
+    } catch (error) {
+        console.error('Ошибка получения данных о почве:', error);
+        return null;
+    }
+}
+
 // ML-коррекции для анализа поверхности
 function applySurfaceMLCorrections(surfaceData, locationData, weatherData, variability) {
     console.log('🤖 ML-коррекции для поверхности...');
     const corrected = { ...surfaceData };
+    const mlCorrections = [];
 
     // 1. Коррекция испарения по типу местности
     const terrainFactor = getTerrainEvaporationFactor(locationData);
     corrected.evaporationRate = (corrected.evaporationRate || 0) * terrainFactor;
     if (terrainFactor !== 1) {
         corrected.evaporationCorrectionTerrain = Math.round((terrainFactor - 1) * 100);
-        console.log(`  🌍 Испарение (местность): ${corrected.evaporationCorrectionTerrain > 0 ? '+' : ''}${corrected.evaporationCorrectionTerrain}%`);
+        const sign = corrected.evaporationCorrectionTerrain > 0 ? '+' : '';
+        console.log(`  🌍 Испарение (местность): ${sign}${corrected.evaporationCorrectionTerrain}%`);
+        const location = ((locationData.city || '') + ' ' + (locationData.district || '')).toLowerCase();
+        const terrainLabel = location.includes('лес') ? 'Лес' : location.includes('парк') ? 'Парк' : location.includes('город') ? 'Город' : 'Поле';
+        mlCorrections.push({ type: 'terrain', icon: '🌍', label: terrainLabel, value: `${sign}${corrected.evaporationCorrectionTerrain}% испарения` });
     }
 
     // 2. Коррекция по времени суток (ночью испарение медленнее)
@@ -3121,6 +3334,7 @@ function applySurfaceMLCorrections(surfaceData, locationData, weatherData, varia
         corrected.evaporationRate *= 0.3;
         corrected.evaporationCorrectionNight = -70;
         console.log(`  🌙 Испарение (ночь): -70%`);
+        mlCorrections.push({ type: 'time', icon: '🌙', label: 'Ночь', value: '-70% испарения' });
     }
 
     // 3. Коррекция остаточной воды по типу покрытия (пористые впитывают)
@@ -3129,6 +3343,7 @@ function applySurfaceMLCorrections(surfaceData, locationData, weatherData, varia
         corrected.residualWater = (corrected.residualWater || 0) - absorbed;
         corrected.waterAbsorbed = Math.round(absorbed * 100) / 100;
         console.log(`  💧 Впитывание (${corrected.surfaceTypeAdv.label}): -${corrected.waterAbsorbed} мм`);
+        mlCorrections.push({ type: 'porosity', icon: '💧', label: corrected.surfaceTypeAdv.label, value: `-${corrected.waterAbsorbed} мм впитывания` });
     }
 
     // 4. Коррекция по градиенту высоты (вода стекает вниз)
@@ -3136,6 +3351,7 @@ function applySurfaceMLCorrections(surfaceData, locationData, weatherData, varia
         corrected.drainageBonus = 0.2;
         corrected.residualWater = (corrected.residualWater || 0) * 0.8;
         console.log(`  ⬇️ Дренаж (уклон): +20%`);
+        mlCorrections.push({ type: 'slope', icon: '⬇️', label: 'Уклон', value: '+20% дренажа' });
     }
 
     // 5. Коррекция по температуре поверхности (летом быстрее сохнет)
@@ -3144,6 +3360,7 @@ function applySurfaceMLCorrections(surfaceData, locationData, weatherData, varia
         corrected.evaporationRate *= (1 + heatBonus);
         corrected.evaporationCorrectionHeat = Math.round(heatBonus * 100);
         console.log(`  🔥 Испарение (жара): +${corrected.evaporationCorrectionHeat}%`);
+        mlCorrections.push({ type: 'temp', icon: '🔥', label: 'Жара', value: `+${corrected.evaporationCorrectionHeat}% испарения (${corrected.surfaceTemp}°C)` });
     }
 
     // 6. Байесовская коррекция: при отрицательной температуре вода → лёд
@@ -3151,8 +3368,10 @@ function applySurfaceMLCorrections(surfaceData, locationData, weatherData, varia
         corrected.iceFormed = corrected.residualWater;
         corrected.residualWater = 0;
         console.log(`  ❄️ Байесовская коррекция: вода → лёд (${corrected.iceFormed} мм)`);
+        mlCorrections.push({ type: 'ice', icon: '❄️', label: 'Байес: вода→лёд', value: `${corrected.iceFormed} мм` });
     }
 
+    corrected.mlCorrections = mlCorrections;
     return corrected;
 }
 
@@ -3168,10 +3387,15 @@ function getTerrainEvaporationFactor(locationData) {
 
 // Расчёт уверенности в анализе поверхности
 function calculateSurfaceConfidence(surfaceData, variability, dataPointsCount) {
+    // Поддержка как старого формата (variability + dataPointsCount), так и нового (uniformity + hasSoilData)
+    const uniformityLevel = variability?.level || 'moderate';
+    const stdDevVal = variability?.waterStdDev ?? variability?.stdDev ?? 1;
+    const hasSoilData = typeof dataPointsCount === 'boolean' ? dataPointsCount : (dataPointsCount >= 5);
+
     let score = 50;
-    if (dataPointsCount >= 5) score += 20;
-    if (variability && variability.level === 'uniform') score += 10;
-    if (variability && variability.level === 'very_high') score -= 20;
+    if (typeof dataPointsCount === 'number' ? dataPointsCount >= 5 : dataPointsCount) score += 20;
+    if (uniformityLevel === 'uniform') score += 10;
+    if (uniformityLevel === 'very_high' || uniformityLevel === 'extreme') score -= 20;
     if (surfaceData.soilMoisture !== undefined && surfaceData.soilMoisture !== null) score += 15;
     if (surfaceData.surfaceTemp !== undefined && surfaceData.surfaceTemp !== 0) score += 10;
     score = Math.max(0, Math.min(100, score));
@@ -3182,17 +3406,31 @@ function calculateSurfaceConfidence(surfaceData, variability, dataPointsCount) {
     else if (score >= 40) level = 'low';
     else level = 'very_low';
 
+    // Уверенность в остаточной воде
+    let waterScore = 60;
+    if (uniformityLevel === 'uniform') waterScore += 25;
+    else if (uniformityLevel === 'moderate') waterScore += 10;
+
+    // Уверенность во времени высыхания
+    let dryingScore = 50;
+    if ((surfaceData.evaporationRate || 0) > 0) dryingScore += 20;
+    if (uniformityLevel === 'uniform') dryingScore += 10;
+
     return {
         overall: { score, level, icon: getConfidenceIcon(level), label: getConfidenceLabel(level) },
         residualWater: {
-            score: variability?.level === 'uniform' ? 85 : 60,
-            level: variability?.level === 'uniform' ? 'high' : 'medium',
-            margin: `±${variability?.stdDev || 1} мм`
+            score: Math.min(100, waterScore),
+            level: waterScore >= 80 ? 'high' : waterScore >= 60 ? 'medium' : 'low',
+            margin: `±${Math.ceil(stdDevVal * 2)} мм`,
+            icon: waterScore >= 80 ? '🟢' : waterScore >= 60 ? '🟡' : '🟠',
+            label: waterScore >= 80 ? 'Высокая' : waterScore >= 60 ? 'Средняя' : 'Низкая'
         },
         dryingTime: {
-            score: (surfaceData.evaporationRate || 0) > 0 ? 70 : 40,
-            level: (surfaceData.evaporationRate || 0) > 0 ? 'medium' : 'low',
-            margin: '±2 часа'
+            score: Math.min(100, dryingScore),
+            level: dryingScore >= 70 ? 'medium' : 'low',
+            margin: '±2 часа',
+            icon: dryingScore >= 70 ? '🟡' : '🟠',
+            label: dryingScore >= 70 ? 'Средняя' : 'Низкая'
         }
     };
 }
@@ -3879,11 +4117,13 @@ function createBriefSurfaceInfo(surfaceData) {
         ? `Тормозной путь +${Math.round(60 * surfaceData.brakeIncrease / 100)}м`
         : 'Нормальные условия';
     const color = getSeverityColor(surfaceData.severity);
+    const confidence = surfaceData.confidence || {};
     return `
         <div class="surface-brief">
             <div class="surface-brief-header">
                 <span class="surface-icon-brief">${surfaceData.icon}</span>
                 <span class="surface-title-brief" style="color:${color}">${escapeHtml(surfaceData.name)}</span>
+                ${confidence.overall ? `<span class="confidence-badge ${confidence.overall.level}">${confidence.overall.icon} ${confidence.overall.label}</span>` : ''}
             </div>
             <div class="surface-warning-brief">${escapeHtml(warningText)}</div>
         </div>
@@ -4063,6 +4303,97 @@ function createDetailedSurfaceInfo(surfaceData) {
                     <span>${escapeHtml(fc.futureCondition ?? surfaceData.name)}</span>
                 </div>
             </div>
+
+            ${surfaceData.multiPointData ? `
+            <div class="detail-section">
+                <div class="detail-section-title">📊 МНОГОТОЧЕЧНЫЙ АНАЛИЗ</div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Точек данных:</span>
+                        <span class="info-value">${surfaceData.multiPointData.dataPoints}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Радиус:</span>
+                        <span class="info-value">${surfaceData.multiPointData.radius}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Однородность:</span>
+                        <span class="info-value">${surfaceData.multiPointData.uniformity.icon} ${surfaceData.multiPointData.uniformity.label}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Разброс:</span>
+                        <span class="info-value">±${surfaceData.multiPointData.uniformity.waterStdDev} мм</span>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
+
+            ${surfaceData.soilData ? `
+            <div class="detail-section">
+                <div class="detail-section-title">🌱 СОСТОЯНИЕ ПОЧВЫ</div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Влажность:</span>
+                        <span class="info-value">${surfaceData.soilData.moistureLevel.icon} ${surfaceData.soilData.soilMoisture}% (${surfaceData.soilData.moistureLevel.name})</span>
+                    </div>
+                    ${surfaceData.soilData.soilTemp !== null ? `
+                    <div class="info-item">
+                        <span class="info-label">Температура почвы:</span>
+                        <span class="info-value">${surfaceData.soilData.soilTemp}°C</span>
+                    </div>
+                    ` : ''}
+                    <div class="info-item">
+                        <span class="info-label">Проходимость пешком:</span>
+                        <span class="info-value">${surfaceData.soilData.walkability.icon} ${surfaceData.soilData.walkability.label}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Проезд авто:</span>
+                        <span class="info-value">${surfaceData.soilData.driveability.icon} ${surfaceData.soilData.driveability.label}</span>
+                    </div>
+                </div>
+                ${surfaceData.soilData.warnings.length > 0 ? `
+                <div class="warnings-box">
+                    ${surfaceData.soilData.warnings.map(w => `<div class="warning-item">${w}</div>`).join('')}
+                </div>
+                ` : ''}
+            </div>
+            ` : ''}
+
+            ${surfaceData.correctedValues?.mlCorrections?.length > 0 ? `
+            <div class="detail-section">
+                <div class="detail-section-title">🤖 ML-КОРРЕКЦИИ ПОВЕРХНОСТИ</div>
+                <div class="corrections-list">
+                    ${surfaceData.correctedValues.mlCorrections.map(c => `
+                        <div class="correction-item">
+                            <span class="correction-icon">${c.icon}</span>
+                            <span class="correction-label">${c.label}:</span>
+                            <span class="correction-value">${c.value}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            ` : ''}
+
+            ${surfaceData.confidence ? `
+            <div class="detail-section">
+                <div class="detail-section-title">🎯 ТОЧНОСТЬ ДАННЫХ О ПОВЕРХНОСТИ</div>
+                <div class="confidence-overall">
+                    <span class="confidence-badge-large ${surfaceData.confidence.overall.level}">
+                        ${surfaceData.confidence.overall.icon} ${surfaceData.confidence.overall.label} (${surfaceData.confidence.overall.score}%)
+                    </span>
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">Остаточная вода:</span>
+                        <span class="info-value">${surfaceData.confidence.residualWater?.icon || ''} ${surfaceData.confidence.residualWater?.margin || ''}</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">Время высыхания:</span>
+                        <span class="info-value">${surfaceData.confidence.dryingTime?.icon || ''} ${surfaceData.confidence.dryingTime?.margin || ''}</span>
+                    </div>
+                </div>
+            </div>
+            ` : ''}
 
             <div class="danger-badge-large" style="background:${color}">
                 Уровень опасности: ${getSeverityName(surfaceData.severity)}
