@@ -2846,3 +2846,155 @@ body {
     font-size: 12px;
     line-height: 1.5;
 }
+
+/* ============================================================
+   API STATUS PANEL
+   ============================================================ */
+
+.api-status-panel {
+    background: rgba(0, 50, 0, 0.3);
+    border: 1px solid #00ff00;
+    padding: 8px;
+    margin: 10px 0;
+    font-size: 11px;
+    font-family: 'Courier New', monospace;
+    color: #00cc00;
+}
+
+.status-item {
+    display: flex;
+    justify-content: space-between;
+    margin: 3px 0;
+}
+
+.status-label {
+    color: #00aa00;
+}
+
+.status-value {
+    font-weight: bold;
+}
+
+.status-active { color: #00ff00; }
+.status-disabled { color: #888; }
+.status-good { color: #00ff00; }
+.status-warning { color: #ffaa00; }
+
+/* ============================================================
+   HOURLY FORECAST GRID
+   ============================================================ */
+
+.hourly-forecast-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.forecast-hour-card {
+    text-align: center;
+    padding: 8px 4px;
+    background: rgba(0, 255, 0, 0.05);
+    border: 1px solid rgba(0, 255, 0, 0.2);
+    border-radius: 4px;
+}
+
+.forecast-time-label {
+    font-size: 10px;
+    color: #00aa00;
+}
+
+.forecast-icon-lg {
+    font-size: 22px;
+    margin: 4px 0;
+}
+
+.forecast-temp-lg {
+    font-size: 13px;
+    font-weight: bold;
+    color: #00ff00;
+}
+
+.forecast-precip-pct {
+    font-size: 10px;
+    color: #00aaff;
+}
+
+/* ============================================================
+   DAILY FORECAST LIST
+   ============================================================ */
+
+.daily-forecast-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.forecast-day-row {
+    display: grid;
+    grid-template-columns: 110px 40px 90px 1fr 60px;
+    align-items: center;
+    padding: 8px 10px;
+    background: rgba(0, 255, 0, 0.05);
+    border: 1px solid rgba(0, 255, 0, 0.2);
+    border-radius: 4px;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.forecast-date-label {
+    font-weight: bold;
+    color: #00ff00;
+    font-size: 11px;
+}
+
+.forecast-temps-row {
+    display: flex;
+    gap: 8px;
+}
+
+.temp-max-val { color: #ff6600; }
+.temp-min-val { color: #00aaff; }
+
+.forecast-desc-sm {
+    font-size: 10px;
+    color: #00aa00;
+}
+
+.forecast-moon-phase {
+    font-size: 10px;
+    color: #ffaa00;
+    grid-column: span 5;
+    padding-top: 4px;
+}
+
+/* ============================================================
+   WEATHER ALERT TAGS
+   ============================================================ */
+
+.hazard-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 5px;
+}
+
+.tag {
+    background: rgba(255, 170, 0, 0.2);
+    border: 1px solid #ffaa00;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 9px;
+    color: #ffaa00;
+}
+
+@media (max-width: 768px) {
+    .forecast-day-row {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .forecast-moon-phase {
+        grid-column: span 2;
+    }
+}

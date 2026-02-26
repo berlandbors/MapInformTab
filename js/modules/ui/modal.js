@@ -19,6 +19,17 @@ function getHoursText(hours) {
     return `${hours} часов назад`;
 }
 
+function getMoonPhaseEmoji(phase) {
+    if (phase === 0 || phase === 1) return '🌑 Новолуние';
+    if (phase < 0.25) return '🌒 Растущий серп';
+    if (phase === 0.25) return '🌓 Первая четверть';
+    if (phase < 0.5) return '🌔 Растущая луна';
+    if (phase === 0.5) return '🌕 Полнолуние';
+    if (phase < 0.75) return '🌖 Убывающая луна';
+    if (phase === 0.75) return '🌗 Последняя четверть';
+    return '🌘 Убывающий серп';
+}
+
 function getEvaporationLevel(rate) {
     if (rate >= 2) return 'очень быстрая';
     if (rate >= 1) return 'быстрая';
@@ -150,21 +161,22 @@ export function openModal(data) {
         <div class="modal-section hazards-section">
             <div class="modal-section-title">🚨 МЕТЕОРОЛОГИЧЕСКИЕ ПРЕДУПРЕЖДЕНИЯ <span class="hazards-count">${data.weatherAlerts.length}</span></div>
             ${data.weatherAlerts.map(alert => `
-            <div class="hazard-item severity-${alert.severity}">
+            <div class="hazard-item severity-${alert.severity || 'moderate'}">
                 <div class="hazard-header">
                     <span class="hazard-icon">${alert.severity === 'critical' ? '🔴' : '🟠'}</span>
-                    <span class="hazard-title">${alert.event}</span>
+                    <span class="hazard-title">${escapeHtml(alert.event || '')}</span>
                 </div>
                 <div class="hazard-details">
                     <div class="hazard-row">
                         <span class="hazard-label">Источник:</span>
-                        <span class="hazard-value">${alert.sender}</span>
+                        <span class="hazard-value">${escapeHtml(alert.senderName || alert.sender || '')}</span>
                     </div>
                     <div class="hazard-row">
                         <span class="hazard-label">Период:</span>
-                        <span class="hazard-value">С ${alert.start} до ${alert.end}</span>
+                        <span class="hazard-value">С ${alert.startFormatted || alert.start} до ${alert.endFormatted || alert.end}</span>
                     </div>
-                    <div class="hazard-description">${alert.description}</div>
+                    <div class="hazard-description">${escapeHtml(alert.description || '')}</div>
+                    ${alert.tags && alert.tags.length > 0 ? `<div class="hazard-tags">${alert.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
                 </div>
             </div>
             `).join('')}
@@ -274,6 +286,12 @@ export function openModal(data) {
                 <span class="modal-label">SO₂ (диоксид серы):</span>
                 <span class="modal-value">${data.so2} мкг/м³</span>
             </div>
+            ${data.nh3 != null ? `
+            <div class="modal-row">
+                <span class="modal-label">NH₃ (аммиак):</span>
+                <span class="modal-value">${data.nh3} мкг/м³</span>
+            </div>
+            ` : ''}
         </div>
         ` : ''}
 
@@ -289,6 +307,43 @@ export function openModal(data) {
                            `).join('')}
                        </div>`
                     : '<div class="forecast-summary">☀️ Осадков не ожидается в ближайший час</div>'}
+            </div>
+        </div>
+        ` : ''}
+
+        ${data.hourlyForecast && data.hourlyForecast.length > 0 ? `
+        <div class="modal-section">
+            <div class="modal-section-title">📈 ПОЧАСОВОЙ ПРОГНОЗ (48 ЧАСОВ)</div>
+            <div class="hourly-forecast-grid">
+                ${data.hourlyForecast.slice(0, 12).map(h => `
+                <div class="forecast-hour-card">
+                    <div class="forecast-time-label">${new Date(h.dt * 1000).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}</div>
+                    <div class="forecast-icon-lg">${getWeatherIcon(h.weather?.id || 800)}</div>
+                    <div class="forecast-temp-lg">${Math.round(h.temp)}°C</div>
+                    <div class="forecast-precip-pct">${Math.round((h.pop || 0) * 100)}%</div>
+                </div>
+                `).join('')}
+            </div>
+        </div>
+        ` : ''}
+
+        ${data.dailyForecast && data.dailyForecast.length > 0 ? `
+        <div class="modal-section">
+            <div class="modal-section-title">📅 ПРОГНОЗ НА 8 ДНЕЙ</div>
+            <div class="daily-forecast-list">
+                ${data.dailyForecast.map(d => `
+                <div class="forecast-day-row">
+                    <div class="forecast-date-label">${new Date(d.dt * 1000).toLocaleDateString('ru-RU', {weekday: 'short', day: 'numeric', month: 'short'})}</div>
+                    <div class="forecast-icon-lg">${getWeatherIcon(d.weather?.id || 800)}</div>
+                    <div class="forecast-temps-row">
+                        <span class="temp-max-val">↑${Math.round(d.temp?.max ?? d.temp)}°</span>
+                        <span class="temp-min-val">↓${Math.round(d.temp?.min ?? d.temp)}°</span>
+                    </div>
+                    <div class="forecast-desc-sm">${d.weather?.description || ''}</div>
+                    <div class="forecast-precip-pct">💧 ${Math.round((d.pop || 0) * 100)}%</div>
+                    ${d.moonPhase !== undefined ? `<div class="forecast-moon-phase">${getMoonPhaseEmoji(d.moonPhase)}</div>` : ''}
+                </div>
+                `).join('')}
             </div>
         </div>
         ` : ''}

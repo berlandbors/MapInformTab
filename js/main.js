@@ -2,6 +2,7 @@
 
 // API modules
 import { getCurrentWeather as owmCurrentWeather, getOneCallData, get5DayForecast, getAirPollution, getWeatherAlerts, getAirQuality, getMinutelyForecast } from './modules/api/openweather.js';
+import { getCompleteWeatherData, getOWMStatus } from './modules/api/openweathermap.js';
 import { getWeatherDataMultiPoint } from './modules/api/openmeteo.js';
 import { getLocationData } from './modules/api/nominatim.js';
 import { getRoadData, getPedestrianData } from './modules/api/overpass.js';
@@ -172,7 +173,8 @@ async function scanLocation(lat, lng, isRescan = false) {
             co: owmAirPollution.co,
             no2: owmAirPollution.no2,
             o3: owmAirPollution.o3,
-            so2: owmAirPollution.so2
+            so2: owmAirPollution.so2,
+            nh3: owmAirPollution.nh3
         } : null;
 
         // 5. ML corrections
@@ -220,6 +222,8 @@ async function scanLocation(lat, lng, isRescan = false) {
             surfaceAnalysis,
             surfaceCondition,
             trafficAnalysis,
+            airQuality: airQualityData,
+            owmStatus: getOWMStatus(),
             id: currentMarkerCount,
             scanTime: new Date().toLocaleString('ru-RU')
         };
