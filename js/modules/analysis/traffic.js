@@ -6,7 +6,7 @@ function getConfidenceFromScore(score) {
     return 'Низкая';
 }
 
-export function estimateTrafficWithInduction(roadData, weatherData, locationData, dateObj) {
+export function estimateTrafficWithInduction(roadData, weatherData, locationData, dateObj, realTrafficData = null) {
     const date = dateObj || new Date();
     const hour = date.getHours();
     const dow = date.getDay();
@@ -85,7 +85,27 @@ export function estimateTrafficWithInduction(roadData, weatherData, locationData
     }
 
     const speedReductionPct = Math.min(60, totalSpeedReduction);
-    const actualSpeed = Math.round(maxSpeedVal * (1 - speedReductionPct / 100));
+
+    // If real-time traffic data is available, use its current speed; otherwise estimate
+    let actualSpeed;
+    let realFlow = null;
+    if (realTrafficData?.flow) {
+        const flow = realTrafficData.flow;
+        actualSpeed = flow.roadClosure ? 0 : (flow.currentSpeed || Math.round(maxSpeedVal * (1 - speedReductionPct / 100)));
+        const realDelay = flow.freeFlowSpeed > 0
+            ? Math.round((1 - flow.currentSpeed / flow.freeFlowSpeed) * 100)
+            : 0;
+        realFlow = {
+            currentSpeed:  flow.currentSpeed,
+            freeFlowSpeed: flow.freeFlowSpeed,
+            delayPercent:  Math.max(0, realDelay),
+            confidence:    flow.confidence,
+            roadClosure:   flow.roadClosure
+        };
+    } else {
+        actualSpeed = Math.round(maxSpeedVal * (1 - speedReductionPct / 100));
+    }
+
     const probability = Math.min(95, 40 + reasoning.length * 8);
 
     const peakHours = isWeekday ? ['08:00-10:00', '17:00-20:00'] : ['12:00-20:00'];
@@ -94,12 +114,17 @@ export function estimateTrafficWithInduction(roadData, weatherData, locationData
     if (speedReductionPct > 0) recommendation += ` Рекомендуется двигаться со скоростью не выше ${actualSpeed} км/ч.`;
     if (isRaining) recommendation += ' Соблюдайте дистанцию на мокрой дороге.';
     if (isIcy) recommendation += ' Осторожно: возможен гололёд!';
+    if (realFlow?.roadClosure) recommendation = '⛔ Дорога перекрыта! ' + recommendation;
 
     return {
         trafficLevel, trafficLevelEn, probability,
         confidence: getConfidenceFromScore(probability),
         trafficScore, color, maxSpeed: maxSpeedVal, actualSpeed,
         speedReduction: speedReductionPct, congestionRisk, peakHours,
-        reasoning, recommendation
+        reasoning, recommendation,
+        // Real-time traffic data (null if API key not set / unavailable)
+        realFlow,
+        incidents: realTrafficData?.incidents || null,
+        isPeakHour
     };
 }

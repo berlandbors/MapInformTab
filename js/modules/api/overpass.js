@@ -3,6 +3,10 @@
 import { sleep } from '../utils/helpers.js';
 import { getRoadTypeName, getSurfaceName } from '../utils/formatters.js';
 import { retryWithBackoff } from '../utils/retry.js';
+import { SimpleCache } from '../utils/cache.js';
+
+const shadingCache  = new SimpleCache(60 * 60 * 1000); // 1 hour
+const coverageCache = new SimpleCache(60 * 60 * 1000); // 1 hour
 
 function getRoadImportance(highway) {
     const importance = {
@@ -165,5 +169,93 @@ export async function getPedestrianData(lat, lng, attempt = 1) {
             pedestrianName: null, pedestrianSurface: 'Ошибка',
             pedestrianWidth: null, isLit: false, allSurfaces: []
         };
+    }
+}
+
+/**
+ * Fetches nearby buildings and trees for shading analysis (radius 30 m).
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<{buildings: Array<{height:number}>, trees: number}|null>}
+ */
+export async function getShadingData(lat, lng) {
+    const key = `shading-${lat.toFixed(3)}-${lng.toFixed(3)}`;
+    const cached = shadingCache.get(key);
+    if (cached) return cached;
+
+    try {
+        const query = `[out:json][timeout:5];
+(
+  way["building"](around:30,${lat},${lng});
+  node["natural"="tree"](around:30,${lat},${lng});
+  way["natural"="tree_row"](around:30,${lat},${lng});
+);
+out body;`;
+        const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+        console.log('🌳 GET Overpass затенённость r=30м');
+        const startTime = performance.now();
+        const response = await fetch(url);
+        const elapsed = Math.round(performance.now() - startTime);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        console.log(`✅ getShadingData (${elapsed}мс)`);
+
+        const buildings = (data.elements || [])
+            .filter(el => el.tags && el.tags.building)
+            .map(el => {
+                const h = el.tags.height ? parseFloat(el.tags.height) : null;
+                const levels = el.tags['building:levels'] ? parseInt(el.tags['building:levels']) * 3 : null;
+                return { height: h || levels || 6 }; // default ~2 storeys
+            });
+
+        const trees = (data.elements || [])
+            .filter(el => el.tags && (el.tags.natural === 'tree' || el.tags.natural === 'tree_row'))
+            .length;
+
+        const result = { buildings, trees };
+        shadingCache.set(key, result);
+        return result;
+    } catch (err) {
+        console.warn('⚠️ Shading data (Overpass) недоступен:', err.message);
+        return null;
+    }
+}
+
+/**
+ * Checks whether the location has weather protection (tunnel, covered way, shelter, roof).
+ * @param {number} lat
+ * @param {number} lng
+ * @returns {Promise<boolean>}
+ */
+export async function getCoverageData(lat, lng) {
+    const key = `coverage-${lat.toFixed(3)}-${lng.toFixed(3)}`;
+    const cached = coverageCache.get(key);
+    if (cached !== null) return cached;
+
+    try {
+        const query = `[out:json][timeout:5];
+(
+  way["covered"="yes"](around:50,${lat},${lng});
+  way["tunnel"="yes"](around:50,${lat},${lng});
+  way["indoor"="yes"](around:50,${lat},${lng});
+  node["amenity"="shelter"](around:50,${lat},${lng});
+  way["building"="roof"](around:50,${lat},${lng});
+);
+out body 5;`;
+        const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
+        console.log('🏠 GET Overpass защищённость r=50м');
+        const startTime = performance.now();
+        const response = await fetch(url);
+        const elapsed = Math.round(performance.now() - startTime);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        console.log(`✅ getCoverageData (${elapsed}мс)`);
+
+        const hasRoof = (data.elements || []).length > 0;
+        coverageCache.set(key, hasRoof);
+        return hasRoof;
+    } catch (err) {
+        console.warn('⚠️ Coverage data (Overpass) недоступен:', err.message);
+        return false;
     }
 }

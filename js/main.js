@@ -4,8 +4,11 @@
 import { getCurrentWeather as owmCurrentWeather, getOneCallData, get5DayForecast, getAirPollution, getWeatherAlerts, getAirQuality, getMinutelyForecast } from './modules/api/openweather.js';
 import { getCompleteWeatherData, getOWMStatus } from './modules/api/openweathermap.js';
 import { getWeatherDataMultiPoint } from './modules/api/openmeteo.js';
+import { getHistoricalPrecipitation, getHistoricalWetness } from './modules/api/openmeteo-historical.js';
+import { getElevationAndSlope } from './modules/api/elevation.js';
 import { getLocationData } from './modules/api/nominatim.js';
-import { getRoadData, getPedestrianData } from './modules/api/overpass.js';
+import { getRoadData, getPedestrianData, getShadingData, getCoverageData } from './modules/api/overpass.js';
+import { getRealTimeTraffic, getTrafficIncidents } from './modules/api/traffic.js';
 import { getSeismicData } from './modules/api/usgs.js';
 import { getMETARData, mergeWeatherData } from './modules/api/metar.js';
 import { getTimezoneData } from './modules/api/worldtime.js';
@@ -13,6 +16,8 @@ import { getTimezoneData } from './modules/api/worldtime.js';
 // Analysis modules
 import { analyzeSurfaceWithProbability, buildSurfaceCondition } from './modules/analysis/surface.js';
 import { estimateTrafficWithInduction } from './modules/analysis/traffic.js';
+import { calculateDrainage } from './modules/analysis/drainage.js';
+import { calculateShading } from './modules/analysis/shading.js';
 import { applyMLCorrections, calculateConfidenceLevels, saveWeatherHistory } from './modules/analysis/weather.js';
 import { analyzePressure } from './modules/analysis/pressure.js';
 import { collectHazards } from './modules/analysis/hazards.js';
@@ -186,12 +191,44 @@ async function scanLocation(lat, lng, isRescan = false) {
         // 7. Save history
         saveWeatherHistory(weatherData);
 
-        // 8. Surface analysis
-        const surfaceAnalysis = analyzeSurfaceWithProbability(weatherData, roadData, locationData);
-        const surfaceCondition = buildSurfaceCondition(weatherData, roadData, owmOnecall);
+        // 8. Real-data enrichment (parallel, with graceful degradation)
+        const [historicalPrecip, historicalWetness, elevationData, shadingRaw, hasRoof, realTrafficFlow, realIncidents] = await Promise.all([
+            getHistoricalPrecipitation(lat, lng).catch(() => null),
+            getHistoricalWetness(lat, lng).catch(() => null),
+            getElevationAndSlope(lat, lng).catch(() => null),
+            getShadingData(lat, lng).catch(() => null),
+            getCoverageData(lat, lng).catch(() => false),
+            getRealTimeTraffic(lat, lng).catch(() => null),
+            getTrafficIncidents(lat, lng).catch(() => null)
+        ]);
 
-        // 9. Traffic analysis
-        const trafficAnalysis = estimateTrafficWithInduction(roadData, weatherData, locationData, new Date());
+        // Compute dynamic drainage using real data
+        const shadingResult = calculateShading(shadingRaw, weatherData.cloudCover);
+        const realDrainage = calculateDrainage({
+            surfaceType: roadData.roadSurfaceRaw || 'asphalt',
+            slope: elevationData?.slope ?? 5,
+            precip24h: historicalPrecip?.last24h ?? (weatherData.precipitation || 0) * 24,
+            terrainType: roadData.roadType || ''
+        });
+
+        // Compile real data object for analysis functions
+        const realData = {
+            precipitation: historicalPrecip,
+            slope: elevationData?.slope ?? null,
+            drainage: realDrainage,
+            shading: shadingResult,
+            hasRoof,
+            historicalWetness,
+            elevationM: elevationData?.elevation ?? null
+        };
+
+        // 9. Surface analysis
+        const surfaceAnalysis = analyzeSurfaceWithProbability(weatherData, roadData, locationData, realData);
+        const surfaceCondition = buildSurfaceCondition(weatherData, roadData, owmOnecall, realData);
+
+        // 10. Traffic analysis
+        const realTrafficData = (realTrafficFlow || realIncidents) ? { flow: realTrafficFlow, incidents: realIncidents } : null;
+        const trafficAnalysis = estimateTrafficWithInduction(roadData, weatherData, locationData, new Date(), realTrafficData);
 
         const astronomyData = getAstronomyData(lat, lng, weatherData.timezone);
         const alertsData = getLocalWeatherAlerts(weatherData.weatherCode, weatherData.precipProbability);
@@ -222,6 +259,7 @@ async function scanLocation(lat, lng, isRescan = false) {
             surfaceAnalysis,
             surfaceCondition,
             trafficAnalysis,
+            realData,
             airQuality: airQualityData,
             owmStatus: getOWMStatus(),
             id: currentMarkerCount,

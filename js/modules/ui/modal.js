@@ -378,6 +378,35 @@ export function openModal(data) {
         <div class="modal-section">
             <div class="modal-section-title">🌧️ ДЕТАЛЬНЫЙ АНАЛИЗ ПОВЕРХНОСТИ</div>
 
+            ${data.realData ? `
+            <div class="data-panel">
+                <div class="data-panel-title">📡 Реальные данные об осадках
+                    ${data.realData.precipitation ? '<span class="source-badge source-active">✓ Open-Meteo Historical</span>' : '<span class="source-badge source-fallback">≈ приблизительные данные</span>'}
+                </div>
+                ${data.realData.precipitation ? `
+                <div class="data-row"><span class="data-label">Осадки за 1ч:</span><span class="data-value">${data.realData.precipitation.last1h} мм</span></div>
+                <div class="data-row"><span class="data-label">Осадки за 3ч:</span><span class="data-value">${data.realData.precipitation.last3h} мм</span></div>
+                <div class="data-row"><span class="data-label">Осадки за 24ч:</span><span class="data-value">${data.realData.precipitation.last24h} мм</span></div>
+                ` : ''}
+                ${(() => { const hasSlope = data.realData.slope != null; return `<div class="data-row"><span class="data-label">Уклон поверхности:</span><span class="data-value">${hasSlope ? data.realData.slope + '° <span class="source-badge source-active">Elevation API</span>' : '5° (по умолчанию)'}</span></div>`; })()}
+                <div class="data-row"><span class="data-label">Дренаж:</span><span class="data-value">${escapeHtml(data.realData.drainage || 'good')} <span class="source-badge source-active">расчётный</span></span></div>
+                ${data.realData.shading ? `
+                <div class="data-row"><span class="data-label">Затенённость:</span><span class="data-value">${data.realData.shading.isShaded ? '🌑 Затенено' : '☀️ Открыто'} (солнце ${data.realData.shading.sunExposure}%)</span></div>
+                ${data.realData.shading.buildings > 0 ? `<div class="data-row"><span class="data-label">Здания рядом:</span><span class="data-value">${data.realData.shading.buildings} шт., до ${data.realData.shading.maxBuildingHeight} м</span></div>` : ''}
+                ${data.realData.shading.treeCover !== 'none' ? `<div class="data-row"><span class="data-label">Деревья:</span><span class="data-value">${{'sparse':'Редкие','moderate':'Умеренные','dense':'Густые','none':'Нет'}[data.realData.shading.treeCover]}</span></div>` : ''}
+                ` : ''}
+                ${data.realData.hasRoof ? '<div class="data-row"><span class="data-label">Защита:</span><span class="data-value">🏠 Под навесом / в тоннеле</span></div>' : ''}
+                ${data.realData.historicalWetness ? `
+                <div class="data-panel-title" style="margin-top:8px">💧 Историческая влажность за 7 дней
+                    <span class="source-badge source-active">✓ Archive API</span>
+                </div>
+                <div class="data-row"><span class="data-label">Всего осадков:</span><span class="data-value">${data.realData.historicalWetness.last7days} мм</span></div>
+                <div class="data-row"><span class="data-label">Средняя t°C:</span><span class="data-value">${data.realData.historicalWetness.avgTemp}°C</span></div>
+                <div class="data-row"><span class="data-label">Насыщенность почвы:</span><span class="data-value">${{'high':'Насыщенная 🟠','normal':'Нормальная 🟢','low':'Сухая 🟡'}[data.realData.historicalWetness.soilSaturation] || 'Н/Д'}</span></div>
+                ` : ''}
+            </div>
+            ` : ''}
+
             <!-- ДОРОГА -->
             <div class="surface-block">
                 <div class="surface-block-header">
@@ -435,6 +464,34 @@ export function openModal(data) {
         ${data.trafficAnalysis ? `
         <div class="modal-section">
             <div class="modal-section-title">🚦 ДЕТАЛЬНЫЙ АНАЛИЗ ТРАФИКА</div>
+
+            ${data.trafficAnalysis.realFlow ? `
+            <div class="traffic-realtime-block">
+                <div class="data-panel-title">🔴 <span class="real-time">REAL-TIME</span> Трафик
+                    <span class="source-badge source-active">✓ TomTom Traffic API</span>
+                </div>
+                <div class="data-row"><span class="data-label">Скорость потока:</span><span class="data-value">${data.trafficAnalysis.realFlow.currentSpeed} км/ч</span></div>
+                <div class="data-row"><span class="data-label">Макс. скорость:</span><span class="data-value">${data.trafficAnalysis.realFlow.freeFlowSpeed} км/ч</span></div>
+                <div class="data-row"><span class="data-label">Замедление:</span><span class="data-value">${data.trafficAnalysis.realFlow.delayPercent > 0 ? '-' + data.trafficAnalysis.realFlow.delayPercent + '%' : 'Нет'}</span></div>
+                ${data.trafficAnalysis.realFlow.roadClosure ? '<div class="data-row"><span class="data-label">Статус:</span><span class="data-value" style="color:#ff4400">⛔ Дорога перекрыта</span></div>' : ''}
+                ${data.trafficAnalysis.realFlow.confidence ? `<div class="data-row"><span class="data-label">Уверенность:</span><span class="data-value">${Math.round(data.trafficAnalysis.realFlow.confidence * 100)}%</span></div>` : ''}
+            </div>
+            ` : ''}
+
+            ${data.trafficAnalysis.incidents && data.trafficAnalysis.incidents.length > 0 ? `
+            <div class="data-panel">
+                <div class="data-panel-title">⚠️ Инциденты поблизости
+                    <span class="source-badge source-active">✓ HERE Traffic</span>
+                </div>
+                ${data.trafficAnalysis.incidents.map(inc => `
+                <div class="incident-item">
+                    <span class="incident-type">${escapeHtml(inc.type)}</span>
+                    ${inc.description ? `<span class="incident-desc">${escapeHtml(inc.description)}</span>` : ''}
+                    ${inc.distance > 0 ? `<span class="incident-dist">${inc.distance} м</span>` : ''}
+                </div>`).join('')}
+            </div>
+            ` : ''}
+
             <div class="modal-row">
                 <span class="modal-label">Уровень загруженности:</span>
                 <span class="modal-value" style="color: ${data.trafficAnalysis.color}; font-weight: bold;">${data.trafficAnalysis.trafficLevel} (${data.trafficAnalysis.probability}%)</span>
@@ -445,7 +502,7 @@ export function openModal(data) {
             </div>
             <div class="modal-row">
                 <span class="modal-label">Фактическая скорость:</span>
-                <span class="modal-value">${data.trafficAnalysis.actualSpeed} км/ч${data.trafficAnalysis.speedReduction > 0 ? ` (-${data.trafficAnalysis.speedReduction}%)` : ''}</span>
+                <span class="modal-value">${data.trafficAnalysis.actualSpeed} км/ч${data.trafficAnalysis.speedReduction > 0 ? ` (-${data.trafficAnalysis.speedReduction}%)` : ''}${!data.trafficAnalysis.realFlow ? ' <span class="source-badge source-fallback">≈ приблизительно</span>' : ' <span class="source-badge source-active">real-time</span>'}</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">Риск заторов:</span>
@@ -453,7 +510,7 @@ export function openModal(data) {
             </div>
             <div class="modal-row">
                 <span class="modal-label">Часы пик:</span>
-                <span class="modal-value">${data.trafficAnalysis.peakHours.join(', ')}</span>
+                <span class="modal-value">${data.trafficAnalysis.peakHours.join(', ')}${data.trafficAnalysis.isPeakHour ? ' <span class="real-time">● сейчас</span>' : ''}</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">Анализ:</span>
