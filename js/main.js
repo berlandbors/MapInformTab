@@ -84,7 +84,7 @@ async function scanLocation(lat, lng, isRescan = false) {
         let weatherData = await getWeatherDataMultiPoint(lat, lng);
 
         // 2. OpenWeatherMap data
-        const [owmCurrent, owmOnecall, _owmForecast, owmAirPollution] = await Promise.all([
+        const [owmCurrent, owmOnecall, owmForecast, owmAirPollution] = await Promise.all([
             owmCurrentWeather(lat, lng),
             getOneCallData(lat, lng),
             get5DayForecast(lat, lng),
@@ -180,6 +180,7 @@ async function scanLocation(lat, lng, isRescan = false) {
             ...minutelyData,
             owmCurrent,
             owmOnecall,
+            owmForecast,
             minutelyForecast: owmOnecall?.minutely || [],
             hourlyForecast: owmOnecall?.hourly || [],
             dailyForecast: owmOnecall?.daily || [],

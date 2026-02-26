@@ -1,6 +1,7 @@
 // js/modules/analysis/surface.js - Surface analysis
 
 export function calculateDryingTime(factors, surfaceType) {
+    // baseTime values are in minutes: asphalt dries fastest, soil slowest
     let baseTime = { asphalt: 120, concrete: 150, sidewalk: 180, soil: 240 }[surfaceType] || 120;
     const tempCoef = factors.temperature > 25 ? 0.6 : factors.temperature > 15 ? 0.8 : factors.temperature > 5 ? 1.0 : factors.temperature > 0 ? 1.3 : 2.0;
     const windCoef = factors.windSpeed > 15 ? 0.6 : factors.windSpeed > 10 ? 0.7 : factors.windSpeed > 5 ? 0.85 : 1.0;

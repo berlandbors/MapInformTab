@@ -253,6 +253,9 @@ export async function getMinutelyForecast(lat, lng) {
 
 function _getSeverityFromTags(tags) {
     if (!tags || tags.length === 0) return 'moderate';
-    const severeTags = ['Extreme', 'Severe', 'Extreme temperature value'];
-    return tags.some(tag => severeTags.includes(tag)) ? 'critical' : 'high';
+    const criticalTags = ['Extreme', 'Extreme temperature value'];
+    const highTags = ['Severe'];
+    if (tags.some(tag => criticalTags.includes(tag))) return 'critical';
+    if (tags.some(tag => highTags.includes(tag))) return 'high';
+    return 'moderate';
 }
