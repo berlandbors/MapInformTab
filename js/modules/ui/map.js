@@ -7,11 +7,8 @@ import { getCurrentTimeForTimezone } from '../api/worldtime.js';
 import { createPopupContent } from './popup.js';
 import { displayFullInfo } from './modal.js';
 
-// Use isMobile directly from state
-const isMobileState = isMobile;
-
 export function initMap(scanLocationFn) {
-    const initialZoom = isMobileState ? 11 : 12;
+    const initialZoom = isMobile ? 11 : 12;
     const m = L.map('map', { tap: true }).setView([55.7558, 37.6173], initialZoom);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -39,7 +36,7 @@ export function createMarker(lat, lng, data) {
     const popupContent = createPopupContent(data);
     marker.bindPopup(popupContent, {
         maxWidth: 400,
-        minWidth: isMobileState ? 280 : 350,
+        minWidth: isMobile ? 280 : 350,
         closeButton: true,
         autoClose: false,
         autoPan: true,

@@ -1,6 +1,7 @@
 // js/modules/ui/popup.js - Marker popup content
 
 import { escapeHtml } from '../utils/helpers.js';
+import { markers } from '../../state.js';
 import { getWeatherIcon, getWeatherCondition, getWindDirection, getRoadTypeName, 
          getSurfaceName, getObjectTypeName, getSeverityName, getSeverityIcon } from '../utils/formatters.js';
 import { getCurrentTimeForTimezone } from '../api/worldtime.js';

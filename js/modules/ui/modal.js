@@ -2,7 +2,8 @@
 
 import { escapeHtml } from '../utils/helpers.js';
 import { getWeatherIcon, getWeatherCondition, getWindDirection, getRoadTypeName,
-         getSurfaceName, getSeverityName, getSeverityIcon, getQualityLabel, getQualityColorClass } from '../utils/formatters.js';
+         getSurfaceName, getSeverityName, getSeverityIcon, getQualityLabel, getQualityColorClass,
+         getObjectTypeName } from '../utils/formatters.js';
 import { getConfidenceIcon, getConfidenceLabel } from '../analysis/weather.js';
 import { getCurrentTimeForTimezone } from '../api/worldtime.js';
 import { markers, currentMarkerData, setCurrentMarkerData, isMobile } from '../../state.js';
@@ -55,19 +56,6 @@ function getWalkabilityLabel(level) {
 
 function getTrafficabilityLabel(level) {
     return { 'excellent': '✅ Проходимо', 'good': '🟢 Проходимо', 'fair': '🟡 Затруднено', 'poor': '🟠 Сильно затруднено', 'impassable': '🔴 Непроходимо' }[level] || 'Неизвестно';
-}
-
-function getObjectTypeName(type) {
-    if (!type) return 'Объект';
-    const types = {
-        house: 'Дом', residential: 'Жилое здание', apartments: 'Многоквартирный дом',
-        commercial: 'Коммерческое здание', park: 'Парк', school: 'Школа',
-        hospital: 'Больница', restaurant: 'Ресторан', cafe: 'Кафе',
-        pharmacy: 'Аптека', bank: 'Банк', parking: 'Парковка', fuel: 'АЗС',
-        pedestrian: 'Пешеходная зона', footway: 'Пешеходная дорожка', yes: 'Объект'
-    };
-    const t = String(type);
-    return types[t] || t.charAt(0).toUpperCase() + t.slice(1).replace(/_/g, ' ');
 }
 
 export function openModal(data) {
