@@ -33,7 +33,8 @@ export function calculateAdvancedDryingTime(weatherData, surfaceType, roadData =
     const cloudCover = _num(weatherData.cloudCover, 50);
     const precipitation6h = _num(weatherData.precipitation6h ?? (weatherData.precipitation || 0) * 6, 0);
 
-    // 1. Vapour pressure deficit (VPD, kPa)
+    // 1. Vapour pressure deficit (VPD, kPa) — Magnus formula
+    // satVP = 0.6108 * exp(17.27*T / (T+237.3))  [Buck, 1981; result in kPa]
     const satVP = 0.6108 * Math.exp((17.27 * temperature) / (temperature + 237.3));
     const actualVP = satVP * (humidity / 100);
     const vpd = Math.max(0, satVP - actualVP);
@@ -124,8 +125,9 @@ export function calculateBrakingDistance(speed, roadCondition) {
  * @returns {object} Risk assessment
  */
 export function calculateAquaplaningRisk(speed, waterDepth, tirePressure = 2.2) {
-    // Formula: V_crit_mph = 9 * √(p_psi); 1 bar ≈ 14.504 psi; 1 mph = 1.60934 km/h
-    // Combined: V_crit_kmh ≈ 54.9 * √(p_bar)
+    // NASA formula (Horne & Dreher, 1963): V_crit_mph = 9 * √(p_psi)
+    // Unit conversion: 1 bar = 14.504 psi; 1 mph = 1.60934 km/h
+    // Combined coefficient: 9 * √14.504 * 1.60934 ≈ 54.9
     const criticalSpeed = 54.9 * Math.sqrt(tirePressure);
 
     const risk = speed > criticalSpeed && waterDepth > 3 ? 'high'
@@ -299,7 +301,9 @@ export function buildSurfaceCondition(weatherData, roadData, owmOnecall) {
     const brakingAt120 = calculateBrakingDistance(120, conditionEn);
     const dryAt90 = calculateBrakingDistance(90, 'dry');
 
-    // Aquaplaning risk at 90 km/h with estimated water depth
+    // Aquaplaning risk at 90 km/h with estimated water depth.
+    // Coefficients: 0.3 mm depth per 1mm/h last-hour rain (fresh runoff),
+    // 0.1 mm per 1mm/h 3-hour accumulation (drainage partially removes it); cap at 10mm.
     const waterDepth = Math.min(total1h * 0.3 + total3h * 0.1, 10);
     const aquaplaning = calculateAquaplaningRisk(90, waterDepth);
 

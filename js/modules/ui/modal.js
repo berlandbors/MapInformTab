@@ -686,7 +686,7 @@ export function createDetailedSurfaceInfo(surfaceData) {
     const minutelyData = pa.minutelyData || [];
     const minutelyBar = minutelyData.length > 0 ? (() => {
         const step = Math.max(1, Math.floor(minutelyData.length / 10));
-        const samples = minutelyData.filter((_, i) => i % step === 0).slice(0, 10);
+        const samples = minutelyData.filter((_, i) => i % step === 0 && Math.floor(i / step) < 10);
         const maxP = Math.max(...samples.map(m => m.precipitation || 0), 0.01);
         const bars = ['▁','▂','▃','▄','▅','▆','▇','█'];
         return samples.map(m => {
@@ -699,7 +699,7 @@ export function createDetailedSurfaceInfo(surfaceData) {
     function brakingRow(label, data, dryDist) {
         if (!data) return '';
         const delta = data.totalDistance - dryDist;
-        const deltaStr = delta > 0 ? `+${delta} м` : `${delta} м`;
+        const deltaStr = delta > 0 ? `+${delta} м` : delta < 0 ? `${delta} м` : '±0 м';
         return `<div class="period-item">
             <span>${label}</span>
             <span>🟢${dryDist} м → <strong>${data.totalDistance} м</strong> (${deltaStr})</span>
@@ -751,7 +751,7 @@ export function createDetailedSurfaceInfo(surfaceData) {
                         <span>${da.surfaceTemp ?? 'Н/Д'}°C${da.surfaceTempCalc ? ` <span class="temp-calc-hint" title="${escapeHtml(da.surfaceTempCalc)}">ℹ️</span>` : ''}</span>
                     </div>
                     <div class="temp-item"><span>Точка росы</span><span>${da.dewpoint ?? 'Н/Д'}°C</span></div>
-                    <div class="temp-item"><span>Разница (поверхность–роса)</span><span>${da.tempDiff !== undefined ? (da.tempDiff >= 0 ? '+' : '') + da.tempDiff : 'Н/Д'}°C</span></div>
+                    <div class="temp-item"><span>Разница (поверхность - роса)</span><span>${da.tempDiff !== undefined ? (da.tempDiff >= 0 ? '+' : '') + da.tempDiff : 'Н/Д'}°C</span></div>
                 </div>
                 <div class="temp-status">
                     ${da.iceRisk
@@ -816,7 +816,7 @@ export function createDetailedSurfaceInfo(surfaceData) {
                         <div class="impact-box-icon">🛑</div>
                         <div class="impact-box-label">Тормозной путь</div>
                         <div class="impact-box-value">${di.normalBrakingM ?? 60}→${di.newBrakingM ?? 60} м</div>
-                        <div class="impact-box-delta">${(di.newBrakingM || 60) > (di.normalBrakingM || 60) ? '+' : ''}${(di.newBrakingM || 60) - (di.normalBrakingM || 60)} м</div>
+                        <div class="impact-box-delta">${(() => { const d = (di.newBrakingM || 60) - (di.normalBrakingM || 60); return d > 0 ? '+' + d : d < 0 ? String(d) : '±0'; })() } м</div>
                     </div>
                     <div class="impact-box">
                         <div class="impact-box-icon">🚗</div>
