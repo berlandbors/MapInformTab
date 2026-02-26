@@ -1,18 +1,27 @@
 // js/modules/api/worldtime.js - Timezone data via TimeAPI
 
-import { sleep } from '../utils/helpers.js';
+import { retryWithBackoff } from '../utils/retry.js';
 
-export async function getTimezoneData(lat, lng, attempt = 1) {
-    const maxAttempts = 3;
+/**
+ * Fetches timezone information for given coordinates via TimeAPI.
+ * @param {number} lat - Latitude
+ * @param {number} lng - Longitude
+ * @returns {Promise<object>} Timezone data object
+ */
+export async function getTimezoneData(lat, lng) {
+    const url = `https://timeapi.io/api/TimeZone/coordinate?latitude=${lat}&longitude=${lng}`;
+    console.log(`🕐 GET ${url}`);
 
     try {
-        const response = await fetch(
-            `https://timeapi.io/api/TimeZone/coordinate?latitude=${lat}&longitude=${lng}`
-        );
+        const data = await retryWithBackoff(async () => {
+            const startTime = performance.now();
+            const response = await fetch(url);
+            const elapsed = Math.round(performance.now() - startTime);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            console.log(`✅ getTimezoneData (${elapsed}мс)`);
+            return response.json();
+        });
 
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
         const timezoneName = data.timeZone || 'UTC';
         const now = new Date();
 
@@ -88,14 +97,7 @@ export async function getTimezoneData(lat, lng, attempt = 1) {
             dstStart
         };
     } catch (error) {
-        console.error(`Ошибка получения данных о часовом поясе (попытка ${attempt}):`, error);
-
-        if (attempt < maxAttempts) {
-            console.log(`🔄 Повторный запрос часового пояса через ${attempt} сек...`);
-            await sleep(1000 * attempt);
-            return getTimezoneData(lat, lng, attempt + 1);
-        }
-
+        console.error('Ошибка получения данных о часовом поясе:', error);
         return {
             timezone: 'Н/Д', utcOffset: 'Н/Д', isDST: false, usesDST: false,
             winterOffset: null, summerOffset: null, currentSeason: 'winter', dstStart: null

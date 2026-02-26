@@ -1,12 +1,25 @@
 // js/modules/api/openmeteo.js - Open-Meteo API integration
 
 import { getWeatherCondition, getPrecipitationType } from '../utils/formatters.js';
+import { retryWithBackoff } from '../utils/retry.js';
 
+/**
+ * Fetches current weather data from Open-Meteo for a single point.
+ * @param {number} lat - Latitude
+ * @param {number} lng - Longitude
+ * @returns {Promise<object>} Weather data object
+ */
 export async function getWeatherData(lat, lng) {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,visibility,uv_index,precipitation,cloud_cover&daily=precipitation_probability_max,precipitation_hours&timezone=auto&wind_speed_unit=ms&forecast_days=1`;
     try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,visibility,uv_index,precipitation,cloud_cover&daily=precipitation_probability_max,precipitation_hours&timezone=auto&wind_speed_unit=ms&forecast_days=1`;
-        const response = await fetch(url);
-        const data = await response.json();
+        const data = await retryWithBackoff(async () => {
+            const startTime = performance.now();
+            const response = await fetch(url);
+            const elapsed = Math.round(performance.now() - startTime);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            console.log(`✅ getWeatherData Open-Meteo (${elapsed}мс) [${lat.toFixed(3)},${lng.toFixed(3)}]`);
+            return response.json();
+        });
         const current = data.current;
 
         return {

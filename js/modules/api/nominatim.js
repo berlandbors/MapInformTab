@@ -1,27 +1,50 @@
 // js/modules/api/nominatim.js - Nominatim geolocation API
 
-import { sleep } from '../utils/helpers.js';
+import { retryWithBackoff } from '../utils/retry.js';
+import { geocodingCache } from '../utils/cache.js';
 
-export async function getLocationData(lat, lng, attempt = 1) {
-    const maxAttempts = 3;
+/**
+ * Reverse-geocodes coordinates using the Nominatim API.
+ * Results are cached for 15 minutes. Retries up to 3 times with exponential backoff.
+ * @param {number} lat - Latitude
+ * @param {number} lng - Longitude
+ * @returns {Promise<object>} Location data object
+ */
+export async function getLocationData(lat, lng) {
+    const cacheKey = `geocode-${lat.toFixed(4)}-${lng.toFixed(4)}`;
+
+    const cached = geocodingCache.get(cacheKey);
+    if (cached) {
+        console.log(`✅ Кэш геолокации: попадание для ${cacheKey}`);
+        return cached;
+    }
+
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=18`;
+    console.log(`📍 GET ${url}`);
 
     try {
-        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&addressdetails=1&zoom=18`;
+        const data = await retryWithBackoff(async () => {
+            const response = await fetch(url, {
+                headers: {
+                    'Accept-Language': 'ru',
+                    'User-Agent': 'MapInformTab/2.0'
+                }
+            });
 
-        const response = await fetch(url, {
-            headers: {
-                'Accept-Language': 'ru',
-                'User-Agent': 'MapInformTab/2.0'
-            }
-        });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
+            const json = await response.json();
+            const addr = json.address || {};
+            const hasMinimumData =
+                (addr.city || addr.town || addr.village || addr.hamlet || addr.county) &&
+                addr.country;
 
-        const data = await response.json();
+            if (!hasMinimumData) throw new Error('Недостаточно данных геолокации');
+
+            return json;
+        }, 3, 1000);
+
         const addr = data.address || {};
-
         const locationData = {
             road: addr.road || addr.pedestrian || addr.path || addr.footway || 'Нет данных',
             houseNumber: addr.house_number || null,
@@ -35,26 +58,12 @@ export async function getLocationData(lat, lng, attempt = 1) {
             objectName: addr.name || data.name || null
         };
 
-        const hasMinimumData = locationData.city !== 'Нет данных' &&
-                               locationData.country !== 'Нет данных';
-
-        if (!hasMinimumData && attempt < maxAttempts) {
-            console.log(`⚠️ Геолокация попытка ${attempt}: недостаточно данных, повтор...`);
-            await sleep(1000 * attempt);
-            return getLocationData(lat, lng, attempt + 1);
-        }
-
+        geocodingCache.set(cacheKey, locationData);
+        console.log(`💾 Геолокация сохранена в кэш: ${cacheKey}`);
         return locationData;
 
     } catch (error) {
-        console.error(`Ошибка геолокации (попытка ${attempt}):`, error);
-
-        if (attempt < maxAttempts) {
-            console.log(`🔄 Повторный запрос геолокации через ${attempt} сек...`);
-            await sleep(1000 * attempt);
-            return getLocationData(lat, lng, attempt + 1);
-        }
-
+        console.error('Ошибка геолокации:', error);
         return {
             road: 'Ошибка загрузки', houseNumber: null,
             city: 'Ошибка загрузки', district: 'Ошибка загрузки',

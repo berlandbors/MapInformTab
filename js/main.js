@@ -81,15 +81,45 @@ async function scanLocation(lat, lng, isRescan = false) {
 
     try {
         // 1. Multi-point weather data (Open-Meteo as base)
+        console.group('🌐 Open-Meteo многоточечный анализ');
+        const omStart = performance.now();
         let weatherData = await getWeatherDataMultiPoint(lat, lng);
+        console.log(`📊 Open-Meteo завершён за ${Math.round(performance.now() - omStart)}мс`);
+        console.groupEnd();
 
         // 2. OpenWeatherMap data
+        console.group('🌤️ OpenWeatherMap API запросы');
+        const owmStart = performance.now();
         const [owmCurrent, owmOnecall, owmForecast, owmAirPollution] = await Promise.all([
-            owmCurrentWeather(lat, lng),
-            getOneCallData(lat, lng),
-            get5DayForecast(lat, lng),
-            getAirPollution(lat, lng)
+            owmCurrentWeather(lat, lng).catch(err => {
+                console.error('❌ owmCurrentWeather не удалось:', err.message);
+                return null;
+            }),
+            getOneCallData(lat, lng).catch(err => {
+                console.error('❌ getOneCallData не удалось:', err.message);
+                return null;
+            }),
+            get5DayForecast(lat, lng).catch(err => {
+                console.error('❌ get5DayForecast не удалось:', err.message);
+                return null;
+            }),
+            getAirPollution(lat, lng).catch(err => {
+                console.error('❌ getAirPollution не удалось:', err.message);
+                return null;
+            })
         ]);
+        const owmElapsed = Math.round(performance.now() - owmStart);
+        console.log(`📊 OpenWeatherMap результаты (${owmElapsed}мс):`, {
+            current: !!owmCurrent,
+            onecall: !!owmOnecall,
+            forecast: !!owmForecast,
+            airPollution: !!owmAirPollution
+        });
+        console.groupEnd();
+
+        if (!owmCurrent) {
+            console.warn('⚠️ OpenWeatherMap недоступен, используются только данные Open-Meteo');
+        }
 
         if (owmCurrent) {
             weatherData = {
@@ -116,15 +146,40 @@ async function scanLocation(lat, lng, isRescan = false) {
         weatherData = mergeWeatherData(weatherData, metarData);
 
         // 4. Other data sources in parallel
+        console.group('📡 Параллельные API запросы');
+        const parallelStart = performance.now();
         const [locationData, roadData, pedestrianData, seismicData, timezoneData, weatherAlertsData, minutelyData] = await Promise.all([
-            getLocationData(lat, lng),
-            getRoadData(lat, lng),
-            getPedestrianData(lat, lng),
-            getSeismicData(lat, lng),
-            getTimezoneData(lat, lng),
-            getWeatherAlerts(lat, lng),
-            getMinutelyForecast(lat, lng)
+            getLocationData(lat, lng).catch(err => {
+                console.error('❌ getLocationData не удалось:', err.message);
+                return { road: 'Н/Д', city: 'Н/Д', country: 'Н/Д', district: 'Н/Д', state: 'Н/Д', displayName: 'Н/Д', postcode: null, houseNumber: null, objectType: null, objectName: null };
+            }),
+            getRoadData(lat, lng).catch(err => {
+                console.error('❌ getRoadData не удалось:', err.message);
+                return { roadName: null, roadType: 'Н/Д', maxSpeed: null, roadSurface: 'Н/Д', lanes: null };
+            }),
+            getPedestrianData(lat, lng).catch(err => {
+                console.error('❌ getPedestrianData не удалось:', err.message);
+                return { hasPedestrianArea: false, pedestrianType: 'Н/Д', pedestrianName: null, pedestrianSurface: 'Н/Д', pedestrianWidth: null, isLit: false, allSurfaces: [] };
+            }),
+            getSeismicData(lat, lng).catch(err => {
+                console.error('❌ getSeismicData не удалось:', err.message);
+                return { seismicEvents: [] };
+            }),
+            getTimezoneData(lat, lng).catch(err => {
+                console.error('❌ getTimezoneData не удалось:', err.message);
+                return { timezone: 'Н/Д', utcOffset: 'Н/Д', isDST: false, usesDST: false, winterOffset: null, summerOffset: null, currentSeason: 'winter', dstStart: null };
+            }),
+            getWeatherAlerts(lat, lng).catch(err => {
+                console.error('❌ getWeatherAlerts не удалось:', err.message);
+                return { weatherAlerts: [] };
+            }),
+            getMinutelyForecast(lat, lng).catch(err => {
+                console.error('❌ getMinutelyForecast не удалось:', err.message);
+                return { minutelyForecast: [] };
+            })
         ]);
+        console.log(`📊 Параллельные запросы завершены за ${Math.round(performance.now() - parallelStart)}мс`);
+        console.groupEnd();
 
         const airQualityData = owmAirPollution ? {
             aqi: owmAirPollution.aqi,
@@ -230,7 +285,7 @@ async function scanLocation(lat, lng, isRescan = false) {
     } catch (error) {
         console.error('Ошибка сканирования:', error);
         loader.hide();
-        showError('Ошибка загрузки данных. Попробуйте другую точку.');
+        showError(`Ошибка загрузки данных: ${error.message || 'Попробуйте другую точку.'}`);
     }
 }
 

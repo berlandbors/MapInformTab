@@ -96,11 +96,18 @@ export function showLoading() {
 export function showError(message) {
     const content = document.getElementById('infoContent');
     if (content) {
-        content.innerHTML = `
-            <div class="error">
-                ✖ ОШИБКА<br><br>
-                ${message}
-            </div>
-        `;
+        const div = document.createElement('div');
+        div.className = 'error';
+        // Use textContent to safely set the message without XSS risk
+        const header = document.createTextNode('✖ ОШИБКА');
+        const br1 = document.createElement('br');
+        const br2 = document.createElement('br');
+        const text = document.createTextNode(message || 'Неизвестная ошибка');
+        div.appendChild(header);
+        div.appendChild(br1);
+        div.appendChild(br2);
+        div.appendChild(text);
+        content.innerHTML = '';
+        content.appendChild(div);
     }
 }
