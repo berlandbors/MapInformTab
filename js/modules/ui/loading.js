@@ -78,21 +78,6 @@ export class LoadingIndicator {
     }
 }
 
-export function showLoading() {
-    const content = document.getElementById('infoContent');
-    if (content) {
-        content.innerHTML = `
-            <div class="loading">
-                ⟳ СКАНИРОВАНИЕ...<br><br>
-                Загрузка данных
-            </div>
-            <div class="loading-bar">
-                <div class="loading-bar-fill"></div>
-            </div>
-        `;
-    }
-}
-
 export function showError(message) {
     const content = document.getElementById('infoContent');
     if (content) {

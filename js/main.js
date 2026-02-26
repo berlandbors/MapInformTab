@@ -19,7 +19,7 @@ import { calculateDataQuality } from './modules/analysis/quality.js';
 
 // UI modules
 import { initMap, createMarker, clearMarkers, getCurrentLocation, updateTimestamp, updateAllMarkerTimes } from './modules/ui/map.js';
-import { LoadingIndicator, showLoading, showError } from './modules/ui/loading.js';
+import { LoadingIndicator, showError } from './modules/ui/loading.js';
 import { displayFullInfo, openModal, closeModal, openModalById, showDetailedSurfaceModal, closeSurfaceDetailModal, openPressureDetailModal, closePressureDetailModal } from './modules/ui/modal.js';
 import { initSearch } from './modules/ui/search.js';
 import { initLayers, updateLayersForLocation, toggleLayer, focusOnLayer } from './modules/ui/layers.js';
@@ -74,7 +74,6 @@ document.addEventListener('DOMContentLoaded', () => {
 async function scanLocation(lat, lng, isRescan = false) {
     incrementMarkerCount();
     setLastScannedCoords({ lat, lng });
-    showLoading();
 
     const loader = new LoadingIndicator();
     loader.show();
@@ -265,7 +264,6 @@ async function scanLocation(lat, lng, isRescan = false) {
             console.log('⚠️ Низкое качество данных, автоматическое пересканирование...');
             decrementMarkerCount();
             loader.hide();
-            showLoading();
             await sleep(1500);
             return scanLocation(lat, lng, true);
         }
