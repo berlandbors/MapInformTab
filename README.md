@@ -69,10 +69,11 @@ js/
    ```
 3. Откройте `config.js` и замените `YOUR_API_KEY_HERE` на ваш ключ:
    ```javascript
-   window.OPENWEATHER_API_KEY = "ваш_ключ_здесь";
+   export const OPENWEATHER_API_KEY = "ваш_ключ_здесь";
+   if (typeof window !== 'undefined') {
+       window.OPENWEATHER_API_KEY = "ваш_ключ_здесь";
+   }
    ```
-
-> **Примечание:** Файл `config.js` добавлен в `.gitignore` и не будет загружен в репозиторий. Никогда не коммитьте реальные API-ключи.
 
 > **Без API-ключа:** Приложение работает с данными Open-Meteo. С API-ключом добавляются более точные данные OpenWeatherMap.
 
@@ -103,3 +104,28 @@ python -m http.server 8000
 Затем перейдите на [http://localhost:8000](http://localhost:8000).
 
 > **Важно:** Приложение использует ES6 модули (`type="module"`), поэтому требует HTTP-сервер. Открытие `index.html` напрямую через `file://` не поддерживается браузерами.
+
+## 🐛 Отладка проблем
+
+### Ошибка "Ошибка загрузки данных"
+
+1. **Откройте консоль браузера** (F12 → Console)
+2. **Проверьте наличие ошибок:**
+   - `config.js not found` → создайте файл `config.js` с вашим API ключом
+   - `API key not found` → проверьте что ключ правильно прописан в `config.js`
+   - `HTTP 401` → неверный API ключ OpenWeatherMap
+   - `HTTP 429` → превышен лимит запросов (60 запросов/минуту на бесплатном плане)
+   - `CORS error` → проблема с браузером или сетью
+
+3. **Проверьте ключ OpenWeatherMap:**
+   ```javascript
+   // В консоли браузера:
+   console.log(window.OPENWEATHER_API_KEY);
+   // Должно вывести ваш API ключ
+   ```
+
+4. **Тестовый запрос:**
+   ```bash
+   # В терминале:
+   curl "https://api.openweathermap.org/data/2.5/weather?lat=55.7558&lon=37.6173&appid=ваш_ключ"
+   ```
