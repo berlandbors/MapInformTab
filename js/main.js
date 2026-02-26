@@ -19,7 +19,7 @@ import { calculateDataQuality } from './modules/analysis/quality.js';
 
 // UI modules
 import { initMap, createMarker, clearMarkers, getCurrentLocation, updateTimestamp, updateAllMarkerTimes } from './modules/ui/map.js';
-import { LoadingIndicator, showError } from './modules/ui/loading.js';
+import { showLoading, showError, showToast } from './modules/ui/loading.js';
 import { displayFullInfo, openModal, closeModal, openModalById, showDetailedSurfaceModal, closeSurfaceDetailModal, openPressureDetailModal, closePressureDetailModal } from './modules/ui/modal.js';
 import { initSearch } from './modules/ui/search.js';
 import { initLayers, updateLayersForLocation, toggleLayer, focusOnLayer } from './modules/ui/layers.js';
@@ -74,21 +74,17 @@ document.addEventListener('DOMContentLoaded', () => {
 async function scanLocation(lat, lng, isRescan = false) {
     incrementMarkerCount();
     setLastScannedCoords({ lat, lng });
+    showLoading();
 
-    const loader = new LoadingIndicator();
-    loader.show();
+    if (deviceType === 'smartphone-portrait') {
+        showToast('📍 Загрузка данных...', 2000);
+    }
 
     try {
         // 1. Multi-point weather data (Open-Meteo as base)
-        console.group('🌐 Open-Meteo многоточечный анализ');
-        const omStart = performance.now();
         let weatherData = await getWeatherDataMultiPoint(lat, lng);
-        console.log(`📊 Open-Meteo завершён за ${Math.round(performance.now() - omStart)}мс`);
-        console.groupEnd();
 
         // 2. OpenWeatherMap data
-        console.group('🌤️ OpenWeatherMap API запросы');
-        const owmStart = performance.now();
         const [owmCurrent, owmOnecall, owmForecast, owmAirPollution] = await Promise.all([
             owmCurrentWeather(lat, lng).catch(err => {
                 console.error('❌ owmCurrentWeather не удалось:', err.message);
@@ -107,14 +103,6 @@ async function scanLocation(lat, lng, isRescan = false) {
                 return null;
             })
         ]);
-        const owmElapsed = Math.round(performance.now() - owmStart);
-        console.log(`📊 OpenWeatherMap результаты (${owmElapsed}мс):`, {
-            current: !!owmCurrent,
-            onecall: !!owmOnecall,
-            forecast: !!owmForecast,
-            airPollution: !!owmAirPollution
-        });
-        console.groupEnd();
 
         if (!owmCurrent) {
             console.warn('⚠️ OpenWeatherMap недоступен, используются только данные Open-Meteo');
@@ -145,8 +133,6 @@ async function scanLocation(lat, lng, isRescan = false) {
         weatherData = mergeWeatherData(weatherData, metarData);
 
         // 4. Other data sources in parallel
-        console.group('📡 Параллельные API запросы');
-        const parallelStart = performance.now();
         const [locationData, roadData, pedestrianData, seismicData, timezoneData, weatherAlertsData, minutelyData] = await Promise.all([
             getLocationData(lat, lng).catch(err => {
                 console.error('❌ getLocationData не удалось:', err.message);
@@ -177,8 +163,6 @@ async function scanLocation(lat, lng, isRescan = false) {
                 return { minutelyForecast: [] };
             })
         ]);
-        console.log(`📊 Параллельные запросы завершены за ${Math.round(performance.now() - parallelStart)}мс`);
-        console.groupEnd();
 
         const airQualityData = owmAirPollution ? {
             aqi: owmAirPollution.aqi,
@@ -191,10 +175,6 @@ async function scanLocation(lat, lng, isRescan = false) {
             so2: owmAirPollution.so2
         } : null;
 
-        loader.updateProgress('weather', 'success');
-        loader.updateProgress('location', 'success');
-        loader.updateProgress('roads', 'success');
-
         // 5. ML corrections
         weatherData = applyMLCorrections(weatherData, locationData, timezoneData);
 
@@ -206,14 +186,9 @@ async function scanLocation(lat, lng, isRescan = false) {
 
         // 8. Surface analysis
         const surfaceAnalysis = analyzeSurfaceWithProbability(weatherData, roadData, locationData);
-        loader.updateProgress('surface', 'success');
 
         // 9. Traffic analysis
         const trafficAnalysis = estimateTrafficWithInduction(roadData, weatherData, locationData, new Date());
-        loader.updateProgress('traffic', 'success');
-
-        loader.updateProgress('airquality', airQualityData ? 'success' : 'error');
-        loader.updateProgress('alerts', weatherAlertsData ? 'success' : 'error');
 
         const astronomyData = getAstronomyData(lat, lng, weatherData.timezone);
         const alertsData = getLocalWeatherAlerts(weatherData.weatherCode, weatherData.precipProbability);
@@ -263,13 +238,16 @@ async function scanLocation(lat, lng, isRescan = false) {
         if (fullData.quality.score < 50 && !isRescan) {
             console.log('⚠️ Низкое качество данных, автоматическое пересканирование...');
             decrementMarkerCount();
-            loader.hide();
             await sleep(1500);
             return scanLocation(lat, lng, true);
         }
 
         createMarker(lat, lng, fullData);
-        loader.hide();
+
+        if (deviceType === 'smartphone-portrait') {
+            showToast('✅ Данные загружены!', 1500);
+        }
+
         displayFullInfo(fullData);
         updateLayersForLocation(lat, lng, fullData);
 
@@ -282,8 +260,11 @@ async function scanLocation(lat, lng, isRescan = false) {
 
     } catch (error) {
         console.error('Ошибка сканирования:', error);
-        loader.hide();
         showError(`Ошибка загрузки данных: ${error.message || 'Попробуйте другую точку.'}`);
+
+        if (deviceType === 'smartphone-portrait') {
+            showToast('❌ Ошибка загрузки', 2000);
+        }
     }
 }
 
