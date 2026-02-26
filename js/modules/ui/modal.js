@@ -8,6 +8,7 @@ import { getConfidenceIcon, getConfidenceLabel } from '../analysis/weather.js';
 import { getCurrentTimeForTimezone } from '../api/worldtime.js';
 import { markers, currentMarkerData, setCurrentMarkerData, isMobile } from '../../state.js';
 import { focusOnLayer } from './layers.js';
+import { updateTimestamp } from './map.js';
 
 
 // Local helper functions for surface/pressure display
