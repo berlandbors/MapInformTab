@@ -59,18 +59,7 @@
                         <span class="layer-label">Землетрясения</span>
                         <span class="layer-count" id="count-earthquakes">0</span>
                     </label>
-                    <label class="layer-item">
-                        <input type="checkbox" id="layer-fireRisk" checked onchange="toggleLayer('fireRisk')">
-                        <span class="layer-icon">🔥</span>
-                        <span class="layer-label">Пожарная опасность</span>
-                        <span class="layer-count" id="count-fireRisk">—</span>
-                    </label>
-                    <label class="layer-item">
-                        <input type="checkbox" id="layer-roadPrecip" checked onchange="toggleLayer('roadPrecip')">
-                        <span class="layer-icon">🌧️</span>
-                        <span class="layer-label">Осадки на дорогах</span>
-                        <span class="layer-count" id="count-roadPrecip">—</span>
-                    </label>
+
                 </div>
             </div>
         </div>
@@ -141,6 +130,7 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
+    <script src="config.js" onerror="window.OPENWEATHER_API_KEY = ''; console.warn('config.js not found - OpenWeatherMap features disabled')"></script>
     <script src="script.js"></script>
 
     <!-- Модальное окно для шаринга -->

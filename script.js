@@ -7,7 +7,7 @@ let currentMarkerData = null;
 // Слои карты
 let layerGroups = {};
 let connectionLines = [];
-let layerStates = { earthquakes: true, fireRisk: true, roadPrecip: true };
+let layerStates = { earthquakes: true };
 
 // Предыдущее значение давления для определения тенденции
 let previousPressure = null;
@@ -168,12 +168,15 @@ async function scanLocation(lat, lng, isRescan = false) {
         weatherData = mergeWeatherData(weatherData, metarData);
 
         // 3. Остальные данные
-        const [locationData, roadData, pedestrianData, seismicData, timezoneData] = await Promise.all([
+        const [locationData, roadData, pedestrianData, seismicData, timezoneData, airQualityData, weatherAlertsData, minutelyData] = await Promise.all([
             getLocationData(lat, lng),
             getRoadData(lat, lng),
             getPedestrianData(lat, lng),
             getSeismicData(lat, lng),
-            getTimezoneData(lat, lng)
+            getTimezoneData(lat, lng),
+            getAirQuality(lat, lng),
+            getWeatherAlerts(lat, lng),
+            getMinutelyForecast(lat, lng)
         ]);
 
         // 4. ML-коррекции
@@ -186,7 +189,7 @@ async function scanLocation(lat, lng, isRescan = false) {
         saveWeatherHistory(weatherData);
 
         const astronomyData = getAstronomyData(lat, lng, weatherData.timezone);
-        const alertsData = getWeatherAlerts(weatherData.weatherCode, weatherData.precipProbability);
+        const alertsData = getLocalWeatherAlerts(weatherData.weatherCode, weatherData.precipProbability);
 
         const fullData = {
             ...weatherData,
@@ -197,6 +200,9 @@ async function scanLocation(lat, lng, isRescan = false) {
             ...astronomyData,
             ...alertsData,
             ...timezoneData,
+            ...airQualityData,
+            ...weatherAlertsData,
+            ...minutelyData,
             confidence,
             metarData,
             id: markerCount,
@@ -207,23 +213,9 @@ async function scanLocation(lat, lng, isRescan = false) {
         const quality = calculateDataQuality(fullData);
         fullData.quality = quality;
 
-        // Расчёт пожарной опасности и дорожных условий
-        fullData.fireRisk = calculateFireRisk(fullData);
-        fullData.precipAnalysis = getRoadPrecipAnalysis(fullData);
-
         // Анализ давления
         fullData.pressureAnalysis = analyzePressure(fullData.pressure);
         console.log(`📊 Анализ давления: ${fullData.pressure} гПа (${fullData.pressureAnalysis.levelName}, ${fullData.pressureAnalysis.trend})`);
-
-        // Анализ состояния поверхности (асинхронно через Open-Meteo API)
-        fullData.surfaceCondition = await analyzeSurfaceConditionMultiPoint(lat, lng, { ...weatherData, ...roadData }, locationData);
-
-        // Расчёт уверенности в данных о поверхности
-        fullData.surfaceConfidence = calculateSurfaceConfidence(
-            fullData.surfaceCondition,
-            fullData.surfaceCondition.multiPointData?.uniformity,
-            !!fullData.surfaceCondition.soilData
-        );
 
         // Сбор опасностей
         fullData.hazards = collectHazards(fullData);
@@ -311,13 +303,24 @@ const marker = L.marker([lat, lng]).addTo(map); // ← Стандартный с
 function createPopupContent(data) {
     const weatherIcon = getWeatherIcon(data.weatherCode);
     const tempStatus = data.temp > 20 ? 'status-good' : data.temp > 0 ? 'status-warning' : 'status-bad';
-    const trafficStatus = getTrafficStatus(data.traffic);
     const markerIndex = markers.length;
 
     return `
         <div class="popup-title">
             >>> ТОЧКА #${data.id} <<<
         </div>
+
+        ${data.weatherAlerts && data.weatherAlerts.length > 0 ? `
+        <div class="popup-section popup-alerts">
+            <div class="popup-section-title">🚨 ВАЖНЫЕ ПРЕДУПРЕЖДЕНИЯ</div>
+            ${data.weatherAlerts.slice(0, 2).map(alert => `
+            <div class="popup-alert severity-${alert.severity}">
+                <div class="alert-title">${alert.event}</div>
+                <div class="alert-time">До ${alert.end}</div>
+            </div>
+            `).join('')}
+        </div>
+        ` : ''}
 
         <div class="popup-section">
             <div class="popup-section-title">📍 МЕСТОПОЛОЖЕНИЕ</div>
@@ -356,7 +359,7 @@ function createPopupContent(data) {
             <div class="popup-row">
                 <span class="popup-label">Температура:</span>
                 <span class="popup-value">
-                    <span class="status-indicator ${tempStatus}"></span>${data.temp}°C
+                    <span class="status-indicator ${tempStatus}"></span>${data.temp}°C (ощущается ${data.feelsLike}°C)
                 </span>
             </div>
             <div class="popup-row">
@@ -369,11 +372,11 @@ function createPopupContent(data) {
             </div>
             <div class="popup-row">
                 <span class="popup-label">Ветер:</span>
-                <span class="popup-value">${data.windSpeed} м/с</span>
+                <span class="popup-value">${data.windSpeed} м/с ${getWindDirection(data.windDir)}</span>
             </div>
             <div class="popup-row">
                 <span class="popup-label">Давление:</span>
-                <span class="popup-value">${data.pressure} гПа</span>
+                <span class="popup-value">${data.pressure} гПа (${data.pressureAnalysis?.levelName || 'Н/Д'} ${data.pressureAnalysis?.trendIcon || ''})</span>
             </div>
             <div class="popup-row">
                 <span class="popup-label">🌧️ Осадки:</span>
@@ -390,6 +393,20 @@ function createPopupContent(data) {
             </div>` : ''}
         </div>
 
+        ${data.aqi ? `
+        <div class="popup-section">
+            <div class="popup-section-title">🌫️ КАЧЕСТВО ВОЗДУХА</div>
+            <div class="popup-row">
+                <span class="popup-label">Индекс AQI:</span>
+                <span class="popup-value aqi-${data.aqi}">${data.aqiText} (${data.aqi}/5)</span>
+            </div>
+            <div class="popup-row">
+                <span class="popup-label">PM2.5:</span>
+                <span class="popup-value">${data.pm25} мкг/м³</span>
+            </div>
+        </div>
+        ` : ''}
+
         <div class="popup-section">
             <div class="popup-section-title">🚗 ДОРОГИ</div>
             <div class="popup-row">
@@ -399,12 +416,6 @@ function createPopupContent(data) {
             <div class="popup-row">
                 <span class="popup-label">Тип:</span>
                 <span class="popup-value">${data.roadType}</span>
-            </div>
-            <div class="popup-row">
-                <span class="popup-label">Трафик:</span>
-                <span class="popup-value">
-                    <span class="status-indicator ${trafficStatus}"></span>${data.traffic}
-                </span>
             </div>
             ${data.maxSpeed ? `
             <div class="popup-row">
@@ -454,8 +465,6 @@ function createPopupContent(data) {
             [ 📋 ПОЛНАЯ ИНФОРМАЦИЯ ]
         </button>
 
-        ${data.surfaceCondition ? createBriefSurfaceInfo(data.surfaceCondition) : ''}
-
         ${data.quality ? `
         <div class="popup-section quality-section">
             <div class="popup-section-title">📊 КАЧЕСТВО ДАННЫХ</div>
@@ -494,7 +503,6 @@ function openModal(data) {
 
     const weatherIcon = getWeatherIcon(data.weatherCode);
     const tempStatus = data.temp > 20 ? 'status-good' : data.temp > 0 ? 'status-warning' : 'status-bad';
-    const trafficStatus = getTrafficStatus(data.traffic);
 
     body.innerHTML = `
         <div class="modal-section">
@@ -515,12 +523,6 @@ function openModal(data) {
                 <span class="modal-label">Улица/адрес:</span>
                 <span class="modal-value">${data.road}${data.houseNumber ? ', д. ' + escapeHtml(data.houseNumber) : ''}</span>
             </div>
-            ${data.houseNumber ? `
-            <div class="modal-row">
-                <span class="modal-label">Номер дома:</span>
-                <span class="modal-value">${escapeHtml(data.houseNumber)}</span>
-            </div>
-            ` : ''}
             <div class="modal-row">
                 <span class="modal-label">Город:</span>
                 <span class="modal-value">${data.city}</span>
@@ -546,6 +548,31 @@ function openModal(data) {
                 <span class="modal-value">${data.displayName}</span>
             </div>
         </div>
+
+        ${data.weatherAlerts && data.weatherAlerts.length > 0 ? `
+        <div class="modal-section hazards-section">
+            <div class="modal-section-title">🚨 МЕТЕОРОЛОГИЧЕСКИЕ ПРЕДУПРЕЖДЕНИЯ <span class="hazards-count">${data.weatherAlerts.length}</span></div>
+            ${data.weatherAlerts.map(alert => `
+            <div class="hazard-item severity-${alert.severity}">
+                <div class="hazard-header">
+                    <span class="hazard-icon">${alert.severity === 'critical' ? '🔴' : '🟠'}</span>
+                    <span class="hazard-title">${alert.event}</span>
+                </div>
+                <div class="hazard-details">
+                    <div class="hazard-row">
+                        <span class="hazard-label">Источник:</span>
+                        <span class="hazard-value">${alert.sender}</span>
+                    </div>
+                    <div class="hazard-row">
+                        <span class="hazard-label">Период:</span>
+                        <span class="hazard-value">С ${alert.start} до ${alert.end}</span>
+                    </div>
+                    <div class="hazard-description">${alert.description}</div>
+                </div>
+            </div>
+            `).join('')}
+        </div>
+        ` : ''}
 
         ${data.hazards && data.hazards.length > 0 ? `
         <div class="modal-section hazards-section">
@@ -619,6 +646,56 @@ function openModal(data) {
             </div>
         </div>
 
+        ${data.aqi ? `
+        <div class="modal-section">
+            <div class="modal-section-title">🌫️ КАЧЕСТВО ВОЗДУХА</div>
+            <div class="modal-row">
+                <span class="modal-label">Индекс качества (AQI):</span>
+                <span class="modal-value aqi-${data.aqi}">${data.aqiText} (${data.aqi}/5)</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">PM2.5 (мелкая пыль):</span>
+                <span class="modal-value">${data.pm25} мкг/м³</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">PM10 (крупная пыль):</span>
+                <span class="modal-value">${data.pm10} мкг/м³</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">CO (угарный газ):</span>
+                <span class="modal-value">${data.co} мкг/м³</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">NO₂ (диоксид азота):</span>
+                <span class="modal-value">${data.no2} мкг/м³</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">O₃ (озон):</span>
+                <span class="modal-value">${data.o3} мкг/м³</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">SO₂ (диоксид серы):</span>
+                <span class="modal-value">${data.so2} мкг/м³</span>
+            </div>
+        </div>
+        ` : ''}
+
+        ${data.minutelyForecast && data.minutelyForecast.length > 0 ? `
+        <div class="modal-section">
+            <div class="modal-section-title">⚡ ПРОГНОЗ ОСАДКОВ (60 МИНУТ)</div>
+            <div class="minutely-forecast">
+                ${data.minutelyForecast.some(m => m.precipitation > 0)
+                    ? `<div class="forecast-summary">🌧️ Ожидаются осадки</div>
+                       <div class="forecast-chart">
+                           ${data.minutelyForecast.filter((m, i) => i % 5 === 0).map(m => `
+                           <div class="forecast-bar" style="height: ${Math.min(m.precipitation * 10, 50)}px;" title="${m.time}: ${m.precipitation} мм/ч"></div>
+                           `).join('')}
+                       </div>`
+                    : '<div class="forecast-summary">☀️ Осадков не ожидается в ближайший час</div>'}
+            </div>
+        </div>
+        ` : ''}
+
         <div class="modal-section">
             <div class="modal-section-title">🚗 ДОРОЖНАЯ ОБСТАНОВКА</div>
             <div class="modal-row">
@@ -628,12 +705,6 @@ function openModal(data) {
             <div class="modal-row">
                 <span class="modal-label">Тип дороги:</span>
                 <span class="modal-value">${data.roadType}</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">Состояние трафика:</span>
-                <span class="modal-value">
-                    <span class="status-indicator ${trafficStatus}"></span>${data.traffic}
-                </span>
             </div>
             ${data.maxSpeed ? `
             <div class="modal-row">
@@ -708,8 +779,8 @@ function openModal(data) {
             ${data.weatherAlerts && data.weatherAlerts.length > 0 ?
                 data.weatherAlerts.map(a => `
                 <div class="modal-row">
-                    <span class="modal-label">${a.icon} ${a.type}:</span>
-                    <span class="modal-value alert-${a.level}">${a.description}</span>
+                    <span class="modal-label">${a.icon ? a.icon + ' ' : ''}${a.event || a.type || 'Предупреждение'}:</span>
+                    <span class="modal-value alert-${a.severity || a.level || 'moderate'}">${a.description}</span>
                 </div>`).join('') :
                 `<div class="modal-row">
                     <span class="modal-label">Предупреждения:</span>
@@ -717,66 +788,6 @@ function openModal(data) {
                 </div>`
             }
         </div>
-
-        ${data.surfaceCondition ? `
-        <div class="modal-section">
-            <div class="modal-section-title">🌆 АНАЛИЗ ПОВЕРХНОСТИ ДОРОГИ</div>
-            <div class="modal-row">
-                <span class="modal-label">Тип/состояние:</span>
-                <span class="modal-value">${data.surfaceCondition.icon} ${escapeHtml(data.surfaceCondition.name)}</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">Описание:</span>
-                <span class="modal-value">${escapeHtml(data.surfaceCondition.description)}</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">Покрытие:</span>
-                <span class="modal-value">${data.surfaceCondition.surfaceTypeAdv?.label || data.surfaceCondition.surfaceType?.label || 'Асфальт'}</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">Состояние покрытия:</span>
-                <span class="modal-value">${data.surfaceCondition.coverage?.description || data.surfaceCondition.coverage}</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">Тормозной путь:</span>
-                <span class="modal-value">+${data.surfaceCondition.brakeIncrease}%</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">Снижение скорости:</span>
-                <span class="modal-value">-${data.surfaceCondition.speedReduction}%</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">🚶 Для пешеходов:</span>
-                <span class="modal-value">${escapeHtml(data.surfaceCondition.forPedestrians)}</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">🚗 Для водителей:</span>
-                <span class="modal-value">${escapeHtml(data.surfaceCondition.forDrivers)}</span>
-            </div>
-            ${data.surfaceCondition.recommendations && data.surfaceCondition.recommendations.length > 0 ?
-                data.surfaceCondition.recommendations.map(r => `
-                <div class="modal-row">
-                    <span class="modal-label">💡</span>
-                    <span class="modal-value">${escapeHtml(r)}</span>
-                </div>`).join('') : ''}
-        </div>` : ''}
-
-        ${data.fireRisk ? `
-        <div class="modal-section">
-            <div class="modal-section-title">🔥 ПОЖАРНАЯ ОПАСНОСТЬ</div>
-            <div class="modal-row">
-                <span class="modal-label">Уровень:</span>
-                <span class="modal-value" style="color: ${data.fireRisk.color}">${data.fireRisk.description}</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">Индекс:</span>
-                <span class="modal-value">${data.fireRisk.score}/100</span>
-            </div>
-            <div class="modal-row">
-                <span class="modal-label">💡 Рекомендация:</span>
-                <span class="modal-value">${data.fireRisk.recommendation}</span>
-            </div>
-        </div>` : ''}
 
         ${data.seismicEvents && data.seismicEvents.length > 0 ? `
         <div class="modal-section">
@@ -796,14 +807,7 @@ function openModal(data) {
                     <td style="padding: 4px; color: #00ff00;">${e.time}</td>
                 </tr>`).join('')}
             </table>
-        </div>` : `
-        <div class="modal-section">
-            <div class="modal-section-title">🌍 СЕЙСМИЧЕСКАЯ АКТИВНОСТЬ (500 км)</div>
-            <div class="modal-row">
-                <span class="modal-label">Данные:</span>
-                <span class="modal-value">Нет сейсмических событий</span>
-            </div>
-        </div>`}
+        </div>` : ''}
 
         <div class="modal-section">
             <div class="modal-section-title">🕐 ВРЕМЯ И ЧАСОВОЙ ПОЯС</div>
@@ -1434,7 +1438,6 @@ async function getRoadData(lat, lng, attempt = 1) {
                 })[0];
 
             const tags = bestRoad.tags || {};
-            const traffic = estimateTraffic(tags.highway);
 
             console.log(`✅ Дорога найдена в радиусе ${radius}м: ${tags.name || tags.highway}`);
 
@@ -1444,8 +1447,7 @@ async function getRoadData(lat, lng, attempt = 1) {
                 maxSpeed: tags.maxspeed ? parseInt(tags.maxspeed) : null,
                 roadSurface: getSurfaceName(tags.surface),
                 roadSurfaceRaw: tags.surface || null,
-                lanes: tags.lanes || null,
-                traffic: traffic
+                lanes: tags.lanes || null
             };
         }
 
@@ -1462,8 +1464,7 @@ async function getRoadData(lat, lng, attempt = 1) {
             roadType: 'Нет дорог поблизости',
             maxSpeed: null,
             roadSurface: 'Н/Д',
-            lanes: null,
-            traffic: 'Нет данных'
+            lanes: null
         };
 
     } catch (error) {
@@ -1480,8 +1481,7 @@ async function getRoadData(lat, lng, attempt = 1) {
             roadType: 'Ошибка загрузки',
             maxSpeed: null,
             roadSurface: 'Ошибка',
-            lanes: null,
-            traffic: 'Нет данных'
+            lanes: null
         };
     }
 }
@@ -1646,38 +1646,6 @@ function getWindDirection(degrees) {
 }
 
 // Получение статуса трафика
-function getTrafficStatus(traffic) {
-    if (!traffic || traffic === 'Нет данных') return 'status-info';
-    if (traffic.includes('Свободно') || traffic.includes('Низкий')) return 'status-good';
-    if (traffic.includes('Умеренный') || traffic.includes('Средний')) return 'status-warning';
-    if (traffic.includes('Высокий') || traffic.includes('Пробки')) return 'status-bad';
-    return 'status-info';
-}
-
-// Оценка интенсивности трафика по типу дороги
-function estimateTraffic(highway) {
-    const highTraffic = ['motorway', 'trunk', 'primary'];
-    const medTraffic = ['secondary', 'tertiary', 'motorway_link', 'trunk_link', 'primary_link'];
-    const lowTraffic = ['residential', 'living_street', 'service', 'unclassified'];
-
-    if (highTraffic.includes(highway)) {
-        const r = Math.random();
-        if (r < 0.3) return 'Высокий — Пробки';
-        if (r < 0.7) return 'Умеренный';
-        return 'Свободно';
-    }
-    if (medTraffic.includes(highway)) {
-        const r = Math.random();
-        if (r < 0.2) return 'Высокий';
-        if (r < 0.6) return 'Умеренный';
-        return 'Свободно';
-    }
-    if (lowTraffic.includes(highway)) {
-        return Math.random() < 0.8 ? 'Свободно' : 'Низкий';
-    }
-    return 'Нет данных';
-}
-
 // Получение названия типа дороги
 function getRoadTypeName(highway) {
     const types = {
@@ -2173,8 +2141,93 @@ function getAstronomyData(lat, lng, timezone) {
     }
 }
 
+// Получение метеоалертов через OpenWeatherMap API
+async function getWeatherAlerts(lat, lng) {
+    if (!OPENWEATHER_API_KEY) return { weatherAlerts: [] };
+    try {
+        const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lng}&exclude=minutely,hourly,daily&appid=${OPENWEATHER_API_KEY}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        const alerts = (data.alerts || []).map(alert => ({
+            sender: alert.sender_name || 'Метеослужба',
+            event: alert.event,
+            start: new Date(alert.start * 1000).toLocaleString('ru-RU'),
+            end: new Date(alert.end * 1000).toLocaleString('ru-RU'),
+            description: alert.description,
+            severity: getSeverityFromTags(alert.tags)
+        }));
+
+        return { weatherAlerts: alerts };
+    } catch (error) {
+        console.error('Ошибка получения алертов:', error);
+        return { weatherAlerts: [] };
+    }
+}
+
+function getSeverityFromTags(tags) {
+    if (!tags || tags.length === 0) return 'moderate';
+    const severeTags = ['Extreme', 'Severe', 'Extreme temperature value'];
+    return tags.some(tag => severeTags.includes(tag)) ? 'critical' : 'high';
+}
+
+// Получение качества воздуха через OpenWeatherMap API
+async function getAirQuality(lat, lng) {
+    if (!OPENWEATHER_API_KEY) return { aqi: null, aqiText: 'Нет данных' };
+    try {
+        const url = `https://api.openweathermap.org/data/2.5/air_pollution?lat=${lat}&lon=${lng}&appid=${OPENWEATHER_API_KEY}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        const aqi = data.list[0].main.aqi;
+        const components = data.list[0].components;
+
+        const aqiLabels = {
+            1: 'Отличное',
+            2: 'Хорошее',
+            3: 'Умеренное',
+            4: 'Плохое',
+            5: 'Очень плохое'
+        };
+
+        return {
+            aqi,
+            aqiText: aqiLabels[aqi] || 'Нет данных',
+            pm25: components.pm2_5?.toFixed(1) || 'Н/Д',
+            pm10: components.pm10?.toFixed(1) || 'Н/Д',
+            co: components.co?.toFixed(1) || 'Н/Д',
+            no2: components.no2?.toFixed(1) || 'Н/Д',
+            o3: components.o3?.toFixed(1) || 'Н/Д',
+            so2: components.so2?.toFixed(1) || 'Н/Д'
+        };
+    } catch (error) {
+        console.error('Ошибка получения качества воздуха:', error);
+        return { aqi: null, aqiText: 'Нет данных' };
+    }
+}
+
+// Получение минутного прогноза осадков через OpenWeatherMap API
+async function getMinutelyForecast(lat, lng) {
+    if (!OPENWEATHER_API_KEY) return { minutelyForecast: [] };
+    try {
+        const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lng}&exclude=current,hourly,daily,alerts&appid=${OPENWEATHER_API_KEY}`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        const minutely = (data.minutely || []).map((m, index) => ({
+            time: new Date(m.dt * 1000).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }),
+            precipitation: m.precipitation || 0
+        }));
+
+        return { minutelyForecast: minutely };
+    } catch (error) {
+        console.error('Ошибка получения минутного прогноза:', error);
+        return { minutelyForecast: [] };
+    }
+}
+
 // Предупреждения на основе кода погоды
-function getWeatherAlerts(weatherCode, precipProbability) {
+function getLocalWeatherAlerts(weatherCode, precipProbability) {
     const alerts = [];
     if (weatherCode >= 95) {
         alerts.push({ type: 'Гроза', level: 'danger', icon: '⛈️', description: 'Опасная гроза с возможным градом' });
@@ -2232,122 +2285,6 @@ function getMoonPhaseName(phase) {
     if (phase < 0.75) return '🌖 Убывающая луна';
     if (phase < 0.775) return '🌗 Последняя четверть';
     return '🌘 Убывающий серп';
-}
-
-// Расчёт пожарной опасности на основе метеоданных
-function calculateFireRisk(weatherData) {
-    const temp = typeof weatherData.temp === 'number' ? weatherData.temp : 20;
-    const humidity = typeof weatherData.humidity === 'number' ? weatherData.humidity : 50;
-    const windSpeed = typeof weatherData.windSpeed === 'number' ? weatherData.windSpeed : 3;
-    const precipitation = typeof weatherData.precipitation === 'number' ? weatherData.precipitation : 0;
-    const precipProbability = typeof weatherData.precipProbability === 'number' ? weatherData.precipProbability : 0;
-
-    let riskScore = 0;
-
-    // Вклад температуры (0–30 баллов)
-    if (temp >= 35) riskScore += 30;
-    else if (temp >= 25) riskScore += 20;
-    else if (temp >= 15) riskScore += 10;
-
-    // Вклад влажности (0–30 баллов, обратная зависимость)
-    if (humidity <= 20) riskScore += 30;
-    else if (humidity <= 40) riskScore += 20;
-    else if (humidity <= 60) riskScore += 10;
-
-    // Вклад скорости ветра (0–20 баллов)
-    if (windSpeed >= 10) riskScore += 20;
-    else if (windSpeed >= 5) riskScore += 10;
-    else riskScore += 5;
-
-    // Снижение из-за осадков
-    if (precipitation > 5) riskScore -= 20;
-    else if (precipitation > 1) riskScore -= 10;
-    if (precipProbability > 70) riskScore -= 10;
-
-    riskScore = Math.max(0, Math.min(100, riskScore));
-
-    let level, color, description, recommendation;
-    if (riskScore >= 70) {
-        level = 'extreme'; color = '#ff4444';
-        description = 'Чрезвычайно высокая';
-        recommendation = 'Категорически запрещено разводить огонь';
-    } else if (riskScore >= 50) {
-        level = 'high'; color = '#ff6600';
-        description = 'Высокая';
-        recommendation = 'Запрещено разводить костры в лесу';
-    } else if (riskScore >= 30) {
-        level = 'medium'; color = '#ffaa00';
-        description = 'Умеренная';
-        recommendation = 'Соблюдайте осторожность с огнём';
-    } else {
-        level = 'low'; color = '#00aa00';
-        description = 'Низкая';
-        recommendation = 'Пожарная обстановка спокойная';
-    }
-
-    return { score: riskScore, level, color, description, recommendation };
-}
-
-// Анализ условий для водителей при осадках
-function getRoadPrecipAnalysis(data) {
-    const temp = typeof data.temp === 'number' ? data.temp : 20;
-    const precipitation = typeof data.precipitation === 'number' ? data.precipitation : 0;
-    const weatherCode = data.weatherCode || 0;
-    const visibility = typeof data.visibility === 'number' ? data.visibility : 10;
-    const windSpeed = typeof data.windSpeed === 'number' ? data.windSpeed : 0;
-    const precipProbability = typeof data.precipProbability === 'number' ? data.precipProbability : 0;
-
-    // Состояние дорожного покрытия
-    let surfaceCondition, surfaceColor, speedReduction;
-    if (temp < 0 && precipitation > 0) {
-        surfaceCondition = '🧊 Гололедица'; surfaceColor = '#00aaff'; speedReduction = 50;
-    } else if (temp < 2 && precipProbability > 50) {
-        surfaceCondition = '⚠️ Риск гололедицы'; surfaceColor = '#ffaa00'; speedReduction = 30;
-    } else if (precipitation > 5 || (weatherCode >= 80 && weatherCode <= 82)) {
-        surfaceCondition = '💧 Сильное намокание'; surfaceColor = '#ff6600'; speedReduction = 30;
-    } else if (precipitation > 0.5 || (weatherCode >= 61 && weatherCode <= 67)) {
-        surfaceCondition = '🌧️ Мокрое покрытие'; surfaceColor = '#ffaa00'; speedReduction = 20;
-    } else {
-        surfaceCondition = '✅ Сухое покрытие'; surfaceColor = '#00ff00'; speedReduction = 0;
-    }
-
-    // Предупреждение о видимости
-    let visibilityWarning = null;
-    if (visibility < 0.5 || weatherCode === 45 || weatherCode === 48) {
-        visibilityWarning = '🌫️ Очень плохая видимость — включите противотуманные фары';
-    } else if (visibility < 2) {
-        visibilityWarning = '🌫️ Плохая видимость — снизьте скорость';
-    } else if (precipitation > 2 || weatherCode >= 63) {
-        visibilityWarning = '🌧️ Ограниченная видимость из-за осадков';
-    }
-
-    // Предупреждение о ветре
-    let windWarning = null;
-    if (windSpeed > 20) {
-        windWarning = '💨 Сильный ветер — возможен снос транспортных средств';
-    } else if (windSpeed > 12) {
-        windWarning = '💨 Порывистый ветер — опасность для высокого транспорта';
-    }
-
-    // Рекомендации для водителей
-    const recommendations = [];
-    if (speedReduction > 0) {
-        const maxSpeed = data.maxSpeed;
-        if (maxSpeed) {
-            const safeSpeed = Math.round(maxSpeed * (1 - speedReduction / 100));
-            recommendations.push(`Рекомендуемая скорость: ≤ ${safeSpeed} км/ч`);
-        } else {
-            recommendations.push(`Снизьте скорость на ${speedReduction}%`);
-        }
-    }
-    if (precipitation > 0) {
-        recommendations.push('Увеличьте дистанцию до впереди идущего автомобиля');
-    }
-    if (temp < 3 && temp > -5) {
-        recommendations.push('Возможны скользкие участки на мостах');
-    }
-
-    return { surfaceCondition, surfaceColor, speedReduction, visibilityWarning, windWarning, recommendations };
 }
 
 // Название уровня серьёзности опасности
@@ -2478,39 +2415,7 @@ function collectHazards(fullData) {
         });
     }
 
-    // 2. Пожарная опасность
-    if (fullData.fireRisk && (fullData.fireRisk.level === 'extreme' || fullData.fireRisk.level === 'high')) {
-        hazards.push({
-            id: 'fireRisk', icon: '🔥',
-            title: 'Пожарная опасность',
-            severity: fullData.fireRisk.level === 'extreme' ? 'critical' : 'high',
-            value: fullData.fireRisk.description,
-            description: fullData.fireRisk.recommendation,
-            layerName: 'fireRisk'
-        });
-    }
-
-    // 3. Опасные осадки на дорогах
-    if (fullData.precipAnalysis && fullData.precipAnalysis.speedReduction >= 30) {
-        hazards.push({
-            id: 'roadPrecip', icon: '🌧️',
-            title: 'Опасные осадки на дорогах',
-            severity: fullData.precipAnalysis.speedReduction >= 50 ? 'critical' : 'high',
-            value: fullData.precipAnalysis.surfaceCondition,
-            description: `Снижение скорости на ${fullData.precipAnalysis.speedReduction}%`,
-            layerName: 'roadPrecip'
-        });
-    } else if (fullData.precipAnalysis && fullData.precipAnalysis.speedReduction > 0) {
-        hazards.push({
-            id: 'roadPrecip', icon: '🌧️',
-            title: 'Осадки на дорогах', severity: 'moderate',
-            value: fullData.precipAnalysis.surfaceCondition,
-            description: `Снижение скорости на ${fullData.precipAnalysis.speedReduction}%`,
-            layerName: 'roadPrecip'
-        });
-    }
-
-    // 4. Экстремальные температуры
+    // 2. Экстремальные температуры
     const temp = typeof fullData.temp === 'number' ? fullData.temp : null;
     if (temp !== null) {
         if (temp >= 40) {
@@ -2548,7 +2453,7 @@ function collectHazards(fullData) {
             hazards.push({
                 id: 'wind', icon: '💨', title: 'Сильный ветер', severity: 'high',
                 value: `${windSpeed} м/с`,
-                description: (fullData.precipAnalysis && fullData.precipAnalysis.windWarning) || 'Опасность для высокого транспорта',
+                description: 'Опасность для высокого транспорта',
                 layerName: null
             });
         }
@@ -4578,8 +4483,6 @@ function createDetailedPressureInfo(pressureAnalysis, fullData) {
 // Инициализация слоёв карты
 function initLayers() {
     layerGroups.earthquakes = L.layerGroup().addTo(map);
-    layerGroups.fireRisk = L.layerGroup().addTo(map);
-    layerGroups.roadPrecip = L.layerGroup().addTo(map);
 }
 
 // Очистка всех слоёв
@@ -4587,10 +4490,8 @@ function clearLayers() {
     Object.values(layerGroups).forEach(lg => { if (lg) lg.clearLayers(); });
     connectionLines.forEach(line => map.removeLayer(line));
     connectionLines = [];
-    ['earthquakes', 'fireRisk', 'roadPrecip'].forEach(name => {
-        const el = document.getElementById(`count-${name}`);
-        if (el) el.textContent = name === 'earthquakes' ? '0' : '—';
-    });
+    const el = document.getElementById('count-earthquakes');
+    if (el) el.textContent = '0';
 }
 
 // Отображение слоя землетрясений с маркерами и линиями связи
@@ -4650,89 +4551,6 @@ function showEarthquakeLayer(mainLat, mainLng, seismicEvents) {
     if (countEl) countEl.textContent = seismicEvents.length;
 }
 
-// Отображение слоя пожарной опасности
-function showFireRiskLayer(lat, lng, fireRisk) {
-    if (!layerGroups.fireRisk) return;
-    layerGroups.fireRisk.clearLayers();
-
-    const circle = L.circle([lat, lng], {
-        radius: 50,
-        fillColor: fireRisk.color,
-        color: fireRisk.color,
-        weight: 2,
-        opacity: 0.7,
-        fillOpacity: 0.12
-    });
-
-    circle.bindPopup(`
-        <div class="popup-title">🔥 ПОЖАРНАЯ ОПАСНОСТЬ</div>
-        <div class="popup-section">
-            <div class="popup-row">
-                <span class="popup-label">Уровень:</span>
-                <span class="popup-value" style="color: ${fireRisk.color}">${fireRisk.description}</span>
-            </div>
-            <div class="popup-row">
-                <span class="popup-label">Индекс:</span>
-                <span class="popup-value">${fireRisk.score}/100</span>
-            </div>
-            <div class="popup-row">
-                <span class="popup-label">💡 Рекомендация:</span>
-                <span class="popup-value">${fireRisk.recommendation}</span>
-            </div>
-        </div>
-    `);
-
-    layerGroups.fireRisk.addLayer(circle);
-
-    const countEl = document.getElementById('count-fireRisk');
-    if (countEl) {
-        countEl.textContent = fireRisk.level === 'extreme' ? '⚠️' :
-                              fireRisk.level === 'high' ? '🔴' :
-                              fireRisk.level === 'medium' ? '🟡' : '🟢';
-    }
-}
-
-// Отображение слоя осадков на дорогах
-function showRoadPrecipLayer(lat, lng, precipAnalysis) {
-    if (!layerGroups.roadPrecip) return;
-    layerGroups.roadPrecip.clearLayers();
-
-    const marker = L.circleMarker([lat, lng], {
-        radius: 100,
-        fillColor: precipAnalysis.surfaceColor,
-        color: precipAnalysis.surfaceColor,
-        weight: 3,
-        opacity: 0.9,
-        fillOpacity: 0.25
-    });
-
-    const warningsHtml = [precipAnalysis.visibilityWarning, precipAnalysis.windWarning]
-        .filter(Boolean)
-        .map(w => `<div class="popup-row"><span class="popup-value alert-warning">${w}</span></div>`)
-        .join('');
-
-    const recsHtml = precipAnalysis.recommendations
-        .map(r => `<div class="popup-row"><span class="popup-label">💡</span><span class="popup-value">${r}</span></div>`)
-        .join('');
-
-    marker.bindPopup(`
-        <div class="popup-title">🌧️ ДОРОЖНЫЕ УСЛОВИЯ</div>
-        <div class="popup-section">
-            <div class="popup-row">
-                <span class="popup-label">Покрытие:</span>
-                <span class="popup-value" style="color: ${precipAnalysis.surfaceColor}">${precipAnalysis.surfaceCondition}</span>
-            </div>
-            ${warningsHtml}
-        </div>
-        ${recsHtml ? `<div class="popup-section"><div class="popup-section-title">💡 РЕКОМЕНДАЦИИ ВОДИТЕЛЯМ</div>${recsHtml}</div>` : ''}
-    `);
-
-    layerGroups.roadPrecip.addLayer(marker);
-
-    const countEl = document.getElementById('count-roadPrecip');
-    if (countEl) countEl.textContent = precipAnalysis.speedReduction > 0 ? '⚠️' : '✅';
-}
-
 // Переключение видимости слоя
 function toggleLayer(layerName) {
     layerStates[layerName] = !layerStates[layerName];
@@ -4758,8 +4576,6 @@ function updateLayersForLocation(lat, lng, fullData) {
     connectionLines = [];
 
     showEarthquakeLayer(lat, lng, fullData.seismicEvents || []);
-    showFireRiskLayer(lat, lng, fullData.fireRisk || calculateFireRisk(fullData));
-    showRoadPrecipLayer(lat, lng, fullData.precipAnalysis || getRoadPrecipAnalysis(fullData));
 
     // Применить текущие состояния видимости слоёв
     Object.keys(layerStates).forEach(name => {
@@ -4779,7 +4595,6 @@ function displayFullInfo(data) {
     const content = document.getElementById('infoContent');
     const markerIndex = markers.length - 1;
     const tempStatus = data.temp > 20 ? 'status-good' : data.temp > 0 ? 'status-warning' : 'status-bad';
-    const trafficStatus = getTrafficStatus(data.traffic);
     const weatherIcon = getWeatherIcon(data.weatherCode);
 
     content.innerHTML = `
@@ -4899,12 +4714,6 @@ function displayFullInfo(data) {
                 <span class="info-value">${getTextureName(data.surfaceCondition.surfaceTypeAdv.texture)}</span>
             </div>
             ` : ''}
-            <div class="info-row">
-                <span class="info-label">Трафик:</span>
-                <span class="info-value">
-                    <span class="status-indicator ${trafficStatus}"></span>${data.traffic}
-                </span>
-            </div>
             ${data.maxSpeed ? `
             <div class="info-row">
                 <span class="info-label">Макс. скорость:</span>
@@ -5152,19 +4961,6 @@ function displayFullInfo(data) {
             ` : ''}
         </div>
         ` : ''}
-
-        ${data.fireRisk && data.fireRisk.level !== 'low' ? `
-        <div class="info-section">
-            <div class="section-title">🔥 ПОЖАРНАЯ ОПАСНОСТЬ</div>
-            <div class="info-row">
-                <span class="info-label">Уровень:</span>
-                <span class="info-value" style="color: ${data.fireRisk.color}">${data.fireRisk.description}</span>
-            </div>
-            <div class="info-row">
-                <span class="info-label">💡 Рекомендация:</span>
-                <span class="info-value">${data.fireRisk.recommendation}</span>
-            </div>
-        </div>` : ''}
 
         ${data.seismicEvents && data.seismicEvents.length > 0 ? `
         <div class="info-section">
