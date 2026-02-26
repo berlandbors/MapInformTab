@@ -244,7 +244,7 @@ function _getSurfaceDisplay(conditionEn) {
  * @param {object|null} owmOnecall - OpenWeatherMap OneCall data (may be null)
  * @returns {object} surfaceCondition
  */
-export function buildSurfaceCondition(weatherData, roadData, owmOnecall) {
+export function buildSurfaceCondition(weatherData, roadData, owmOnecall, realData = {}) {
     const temp = _num(weatherData.temp, 15);
     const humidity = _num(weatherData.humidity, 60);
     const windSpeed = _num(weatherData.windSpeed, 3);
@@ -252,14 +252,14 @@ export function buildSurfaceCondition(weatherData, roadData, owmOnecall) {
     const precipitation = _num(weatherData.precipitation, 0);
     const weatherCode = _num(weatherData.weatherCode, 0);
 
-    // Precipitation periods (use OWM rain/snow fields when available)
-    const rain1h = _num(weatherData.rain1h, precipitation);
-    const rain3h = _num(weatherData.rain3h, precipitation * 3);
+    // Precipitation periods — prefer real historical data when available
+    const rain1h = realData.precipitation?.last1h ?? _num(weatherData.rain1h, precipitation);
+    const rain3h = realData.precipitation?.last3h ?? _num(weatherData.rain3h, precipitation * 3);
     const snow1h = _num(weatherData.snow1h, weatherCode >= 71 && weatherCode <= 86 ? precipitation : 0);
     const total1h = +(rain1h + snow1h).toFixed(1);
     const total3h = +(rain3h + _num(weatherData.snow3h, snow1h * 3)).toFixed(1);
-    const total6h = +(total3h * 2).toFixed(1);
-    const total24h = +(total6h * 4).toFixed(1);
+    const total6h  = realData.precipitation?.last6h  != null ? +realData.precipitation.last6h.toFixed(1)  : +(total3h * 2).toFixed(1);
+    const total24h = realData.precipitation?.last24h != null ? +realData.precipitation.last24h.toFixed(1) : +(total6h * 4).toFixed(1);
 
     // Surface type and drainage from road data
     const rawSurface = roadData.roadSurfaceRaw || 'asphalt';
@@ -267,10 +267,11 @@ export function buildSurfaceCondition(weatherData, roadData, owmOnecall) {
                          : ['paving_stones', 'cobblestone', 'sett'].includes(rawSurface) ? 'sidewalk'
                          : rawSurface === 'concrete' ? 'concrete'
                          : 'asphalt';
-    const drainageKey = 'good';
+    // Use real drainage if available; otherwise default 'good'
+    const drainageKey = realData.drainage ?? 'good';
 
-    // Determine conditionEn from surface analysis
-    const surfAnalysis = analyzeSurfaceWithProbability(weatherData, roadData, {});
+    // Determine conditionEn from surface analysis (pass realData for accuracy)
+    const surfAnalysis = analyzeSurfaceWithProbability(weatherData, roadData, {}, realData);
     const conditionEn = surfAnalysis.road.conditionEn;
 
     // Dewpoint
@@ -461,12 +462,13 @@ export function calculateDryingTime(factors, surfaceType) {
     const sunCoef = factors.sunExposure > 80 ? 0.5 : factors.sunExposure > 60 ? 0.7 : factors.sunExposure > 40 ? 0.85 : factors.sunExposure > 20 ? 1.0 : 1.3;
     const drainageCoef = { excellent: 0.6, good: 0.8, moderate: 1.0, poor: 1.5, very_poor: 2.0 }[factors.drainage] || 1.0;
     const slopeCoef = factors.slope > 10 ? 0.7 : factors.slope > 5 ? 0.85 : factors.slope > 2 ? 1.0 : 1.3;
-    const totalTime = baseTime * tempCoef * windCoef * humidityCoef * sunCoef * drainageCoef * slopeCoef;
+    const historicalWetnessCoef = factors.historicalWetness === 'high' ? 1.5 : factors.historicalWetness === 'low' ? 0.7 : 1.0;
+    const totalTime = baseTime * tempCoef * windCoef * humidityCoef * sunCoef * drainageCoef * slopeCoef * historicalWetnessCoef;
     const hours = Math.floor(totalTime / 60);
     const minutes = Math.round(totalTime % 60);
     if (totalTime < 60) return `${minutes}мин`;
     if (hours >= 24) return `${Math.round(hours / 24)}д ${hours % 24}ч`;
-    return `${hours}ч ${minutes}мин`;
+    return minutes > 0 ? `${hours}ч ${minutes}мин` : `${hours}ч`;
 }
 
 export function updateBayesian(priorP, likelihood, evidence) {
@@ -479,14 +481,16 @@ export function getConfidenceFromScore(score) {
     return 'Низкая';
 }
 
-export function analyzeSurfaceWithProbability(weatherData, roadData, locationData) {
+export function analyzeSurfaceWithProbability(weatherData, roadData, locationData, realData = {}) {
     const hour = new Date().getHours();
     const timeOfDay = hour >= 6 && hour < 12 ? 'morning'
                     : hour >= 12 && hour < 18 ? 'day'
                     : hour >= 18 && hour < 22 ? 'evening'
                     : 'night';
 
-    const sunExposure = weatherData.cloudCover != null ? Math.max(0, 100 - weatherData.cloudCover) : 50;
+    const sunExposure = realData.shading != null
+        ? realData.shading.sunExposure
+        : weatherData.cloudCover != null ? Math.max(0, 100 - weatherData.cloudCover) : 50;
 
     const baseSurfaceType = roadData.roadSurfaceRaw || 'asphalt';
     const surfaceTypeNorm = ['soil', 'grass', 'dirt', 'ground'].includes(baseSurfaceType) ? 'soil'
@@ -494,10 +498,24 @@ export function analyzeSurfaceWithProbability(weatherData, roadData, locationDat
                           : baseSurfaceType === 'concrete' ? 'concrete'
                           : 'asphalt';
 
-    const precip = weatherData.precipitation || 0;
-    const precip3h = precip * 3;
-    const precip6h = precip * 6;
-    const precip24h = precip * 24;
+    // Use real precipitation data if available; otherwise extrapolate from current reading
+    const precip = realData.precipitation?.last1h ?? weatherData.precipitation ?? 0;
+    const precip3h  = realData.precipitation?.last3h  ?? precip * 3;
+    const precip6h  = realData.precipitation?.last6h  ?? precip * 6;
+    const precip24h = realData.precipitation?.last24h ?? precip * 24;
+
+    // Use real slope if available; otherwise fall back to default 5°
+    const slope = realData.slope ?? 5;
+
+    // Use real drainage if available; otherwise default 'good'
+    const drainage = realData.drainage ?? 'good';
+
+    // Use real shading if available
+    const isShaded = realData.shading != null ? realData.shading.isShaded : sunExposure < 20;
+    const hasRoof  = realData.hasRoof ?? false;
+
+    // Historical wetness for drying time
+    const historicalWetness = realData.historicalWetness?.soilSaturation ?? 'normal';
 
     const factors = {
         precipitation1h: precip, precipitation3h: precip3h,
@@ -508,8 +526,9 @@ export function analyzeSurfaceWithProbability(weatherData, roadData, locationDat
         cloudCover: weatherData.cloudCover || 50,
         timeOfDay, sunExposure,
         surfaceType: surfaceTypeNorm,
-        drainage: 'good', slope: 5,
-        isShaded: sunExposure < 20, hasRoof: false
+        drainage, slope,
+        isShaded, hasRoof,
+        historicalWetness
     };
 
     const rules = [
@@ -563,9 +582,9 @@ export function analyzeSurfaceWithProbability(weatherData, roadData, locationDat
         };
     }
 
-    const roadFactors = { surfaceType: surfaceTypeNorm, drainage: 'good', slope: 5 };
-    const sidewalkFactors = { surfaceType: 'sidewalk', drainage: 'moderate', slope: 1, isShaded: true };
-    const soilFactors = { surfaceType: 'soil', drainage: factors.precipitation24h > 15 ? 'poor' : 'moderate', slope: 3 };
+    const roadFactors = { surfaceType: surfaceTypeNorm, drainage, slope };
+    const sidewalkFactors = { surfaceType: 'sidewalk', drainage: drainage === 'poor' || drainage === 'very_poor' ? drainage : 'moderate', slope: Math.min(slope, 3), isShaded: true };
+    const soilFactors = { surfaceType: 'soil', drainage: factors.precipitation24h > 15 ? 'poor' : 'moderate', slope: Math.min(slope, 5) };
 
     const roadResult = analyzeOneSurface('asphalt', roadFactors);
     const sidewalkResult = analyzeOneSurface('sidewalk', sidewalkFactors);

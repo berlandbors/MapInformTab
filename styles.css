@@ -2998,3 +2998,143 @@ body {
         grid-column: span 2;
     }
 }
+
+/* ─── Real-data panels ──────────────────────────────────────────────────── */
+
+.data-panel {
+    background: rgba(0, 150, 255, 0.08);
+    border: 1px solid rgba(0, 150, 255, 0.3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 8px 0;
+    font-size: 11px;
+}
+
+.data-panel-title {
+    font-size: 10px;
+    font-weight: bold;
+    color: #7ec8e3;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.data-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    gap: 8px;
+}
+
+.data-row:last-child {
+    border-bottom: none;
+}
+
+.data-label {
+    color: #aaa;
+    font-size: 10px;
+    flex-shrink: 0;
+}
+
+.data-value {
+    color: #ddd;
+    font-size: 10px;
+    text-align: right;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+/* ─── Source badges ─────────────────────────────────────────────────────── */
+
+.source-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 9px;
+    font-weight: bold;
+    letter-spacing: 0.3px;
+    white-space: nowrap;
+}
+
+.source-active {
+    background: rgba(0, 200, 100, 0.2);
+    border: 1px solid rgba(0, 200, 100, 0.5);
+    color: #00c864;
+}
+
+.source-fallback {
+    background: rgba(255, 170, 0, 0.15);
+    border: 1px solid rgba(255, 170, 0, 0.4);
+    color: #ffaa00;
+}
+
+/* ─── Real-time marker ──────────────────────────────────────────────────── */
+
+.real-time {
+    color: #ff4444;
+    font-weight: bold;
+    font-size: 9px;
+    animation: blink 1.5s step-end infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.3; }
+}
+
+/* ─── Traffic real-time block ───────────────────────────────────────────── */
+
+.traffic-realtime-block {
+    background: rgba(255, 50, 50, 0.07);
+    border: 1px solid rgba(255, 80, 80, 0.3);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 8px 0;
+    font-size: 11px;
+}
+
+.traffic-realtime-block .data-panel-title {
+    color: #ff9090;
+}
+
+/* ─── Incident items ────────────────────────────────────────────────────── */
+
+.incident-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    flex-wrap: wrap;
+    font-size: 10px;
+}
+
+.incident-item:last-child {
+    border-bottom: none;
+}
+
+.incident-type {
+    color: #ff9090;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+.incident-desc {
+    color: #ccc;
+    flex: 1;
+}
+
+.incident-dist {
+    color: #aaa;
+    font-size: 9px;
+    white-space: nowrap;
+}
