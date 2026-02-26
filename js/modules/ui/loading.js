@@ -5,13 +5,23 @@ export function showLoading() {
     if (content) {
         content.innerHTML = `
             <div class="loading-container">
-                <div class="loading-spinner"></div>
-                <div class="loading-text">
-                    ⟳ ЗАГРУЗКА ДАННЫХ...<br><br>
-                    Сканирование точки на карте
+                <div class="retro-loader">
+                    <div class="retro-loader-box">
+                        <div class="retro-loader-top"></div>
+                        <div class="retro-loader-middle">
+                            <span class="loader-dot">█</span>
+                            <span class="loader-dot">█</span>
+                            <span class="loader-dot">█</span>
+                        </div>
+                        <div class="retro-loader-bottom"></div>
+                    </div>
                 </div>
-                <div class="loading-bar">
-                    <div class="loading-bar-fill"></div>
+                <div class="loading-text">
+                    ▼ ЗАГРУЗКА ДАННЫХ ▼<br><br>
+                    [ СКАНИРОВАНИЕ... ]
+                </div>
+                <div class="retro-progress-bar">
+                    <div class="retro-progress-fill"></div>
                 </div>
             </div>
         `;
