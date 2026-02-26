@@ -187,7 +187,6 @@ async function scanLocation(lat, lng, isRescan = false) {
         // 8. Surface analysis
         const surfaceAnalysis = analyzeSurfaceWithProbability(weatherData, roadData, locationData);
         const surfaceCondition = buildSurfaceCondition(weatherData, roadData, owmOnecall);
-        loader.updateProgress('surface', 'success');
 
         // 9. Traffic analysis
         const trafficAnalysis = estimateTrafficWithInduction(roadData, weatherData, locationData, new Date());
