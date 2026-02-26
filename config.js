@@ -10,6 +10,6 @@ export const HERE_API_KEY = '';
 // Глобальное определение для обратной совместимости со старым script.js
 if (typeof window !== 'undefined') {
     window.OPENWEATHER_API_KEY = "452c27213f9904c2140f7b65897bfbef";
-    window.TOMTOM_API_KEY = '';
+    window.TOMTOM_API_KEY = 'Eo66owtn8ghQlYLmAVMYNrKpOv7B0PB6';
     window.HERE_API_KEY = '';
 }
