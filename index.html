@@ -89,6 +89,8 @@
                     любой точки на карте
                 </div>
             </div>
+
+            <div id="apiStatusContainer" class="api-status"></div>
             
             <div class="timestamp" id="timestamp"></div>
         </div>
@@ -132,6 +134,7 @@
     <script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
     <script type="module" src="config.js" onerror="window.OPENWEATHER_API_KEY = ''; console.warn('config.js not found - OpenWeatherMap features disabled')"></script>
     <script type="module" src="js/main.js"></script>
+    <script type="module" src="js/modules/ui/status-panel.js"></script>
 
     <!-- Модальное окно для шаринга -->
     <div class="modal-overlay" id="shareModal" onclick="closeShareModal(event)">
