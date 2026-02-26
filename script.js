@@ -159,6 +159,9 @@ async function scanLocation(lat, lng, isRescan = false) {
     lastScannedCoords = { lat, lng };
     showLoading();
 
+    const loader = new LoadingIndicator();
+    loader.show();
+
     try {
         // 1. Многоточечный анализ погоды
         let weatherData = await getWeatherDataMultiPoint(lat, lng);
@@ -179,6 +182,10 @@ async function scanLocation(lat, lng, isRescan = false) {
             getMinutelyForecast(lat, lng)
         ]);
 
+        loader.updateProgress('weather', 'success');
+        loader.updateProgress('location', 'success');
+        loader.updateProgress('roads', 'success');
+
         // 4. ML-коррекции
         weatherData = applyMLCorrections(weatherData, locationData, timezoneData);
 
@@ -187,6 +194,17 @@ async function scanLocation(lat, lng, isRescan = false) {
 
         // 6. Сохранить историю
         saveWeatherHistory(weatherData);
+
+        // 7. Индуктивный анализ поверхности
+        const surfaceAnalysis = analyzeSurfaceWithProbability(weatherData, roadData, locationData);
+        loader.updateProgress('surface', 'success');
+
+        // 8. Индуктивный анализ трафика
+        const trafficAnalysis = estimateTrafficWithInduction(roadData, weatherData, locationData, new Date());
+        loader.updateProgress('traffic', 'success');
+
+        loader.updateProgress('airquality', airQualityData ? 'success' : 'error');
+        loader.updateProgress('alerts', weatherAlertsData ? 'success' : 'error');
 
         const astronomyData = getAstronomyData(lat, lng, weatherData.timezone);
         const alertsData = getLocalWeatherAlerts(weatherData.weatherCode, weatherData.precipProbability);
@@ -205,6 +223,8 @@ async function scanLocation(lat, lng, isRescan = false) {
             ...minutelyData,
             confidence,
             metarData,
+            surfaceAnalysis,
+            trafficAnalysis,
             id: markerCount,
             scanTime: new Date().toLocaleString('ru-RU')
         };
@@ -239,12 +259,14 @@ async function scanLocation(lat, lng, isRescan = false) {
         if (quality.score < 50 && !isRescan) {
             console.log('⚠️ Низкое качество данных, автоматическое пересканирование...');
             markerCount--;
+            loader.hide();
             showLoading();
             await sleep(1500);
             return scanLocation(lat, lng, true);
         }
 
         createMarker(lat, lng, fullData);
+        loader.hide();
         displayFullInfo(fullData);
         updateLayersForLocation(lat, lng, fullData);
 
@@ -255,6 +277,7 @@ async function scanLocation(lat, lng, isRescan = false) {
 
     } catch (error) {
         console.error('Ошибка сканирования:', error);
+        loader.hide();
         showError('Ошибка загрузки данных. Попробуйте другую точку.');
     }
 }
@@ -392,6 +415,34 @@ function createPopupContent(data) {
                 <span class="popup-value alert-${data.weatherAlerts[0].level}">${data.weatherAlerts[0].type}</span>
             </div>` : ''}
         </div>
+
+        ${data.surfaceAnalysis ? `
+        <div class="popup-section">
+            <div class="popup-section-title">🌧️ СОСТОЯНИЕ ПОВЕРХНОСТИ</div>
+            <div class="popup-row">
+                <span class="popup-label">Дорога:</span>
+                <span class="popup-value">${data.surfaceAnalysis.road.condition} <span class="probability">(${data.surfaceAnalysis.road.probability}%)</span></span>
+            </div>
+            <div class="popup-row">
+                <span class="popup-label">Высыхание:</span>
+                <span class="popup-value">~${data.surfaceAnalysis.road.dryingTime}</span>
+            </div>
+        </div>
+        ` : ''}
+
+        ${data.trafficAnalysis ? `
+        <div class="popup-section">
+            <div class="popup-section-title">🚦 ТРАФИК</div>
+            <div class="popup-row">
+                <span class="popup-label">Загруженность:</span>
+                <span class="popup-value" style="color: ${data.trafficAnalysis.color}">${data.trafficAnalysis.trafficLevel} <span class="probability">(${data.trafficAnalysis.probability}%)</span></span>
+            </div>
+            <div class="popup-row">
+                <span class="popup-label">Скорость:</span>
+                <span class="popup-value">${data.trafficAnalysis.actualSpeed} км/ч (лимит ${data.trafficAnalysis.maxSpeed})</span>
+            </div>
+        </div>
+        ` : ''}
 
         ${data.aqi ? `
         <div class="popup-section">
@@ -721,6 +772,83 @@ function openModal(data) {
                 <span class="modal-value">${data.lanes || 'Н/Д'}</span>
             </div>
         </div>
+
+        ${data.surfaceAnalysis ? `
+        <div class="modal-section">
+            <div class="modal-section-title">🌧️ ДЕТАЛЬНЫЙ АНАЛИЗ ПОВЕРХНОСТИ</div>
+            <div class="surface-block">
+                <div class="surface-block-header">🛣️ Дорога (${data.surfaceAnalysis.road.condition})</div>
+                <div class="modal-row">
+                    <span class="modal-label">Вероятность:</span>
+                    <span class="modal-value">${data.surfaceAnalysis.road.probability}% (${data.surfaceAnalysis.road.confidence})</span>
+                </div>
+                <div class="modal-row">
+                    <span class="modal-label">Время до высыхания:</span>
+                    <span class="modal-value">${data.surfaceAnalysis.road.dryingTime}</span>
+                </div>
+                <div class="modal-row">
+                    <span class="modal-label">Факторы:</span>
+                    <ul class="factor-list">${data.surfaceAnalysis.road.factors.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
+                </div>
+            </div>
+            <div class="surface-block">
+                <div class="surface-block-header">🚶 Тротуар (${data.surfaceAnalysis.sidewalk.condition})</div>
+                <div class="modal-row">
+                    <span class="modal-label">Вероятность:</span>
+                    <span class="modal-value">${data.surfaceAnalysis.sidewalk.probability}%</span>
+                </div>
+                <div class="modal-row">
+                    <span class="modal-label">Время до высыхания:</span>
+                    <span class="modal-value">${data.surfaceAnalysis.sidewalk.dryingTime}</span>
+                </div>
+            </div>
+            <div class="surface-block">
+                <div class="surface-block-header">🌱 Почва (${data.surfaceAnalysis.soil.condition})</div>
+                <div class="modal-row">
+                    <span class="modal-label">Тип почвы:</span>
+                    <span class="modal-value">${data.surfaceAnalysis.soil.soilType}</span>
+                </div>
+                <div class="modal-row">
+                    <span class="modal-label">Скорость дренажа:</span>
+                    <span class="modal-value">${data.surfaceAnalysis.soil.drainageRate}</span>
+                </div>
+            </div>
+        </div>
+        ` : ''}
+
+        ${data.trafficAnalysis ? `
+        <div class="modal-section">
+            <div class="modal-section-title">🚦 ДЕТАЛЬНЫЙ АНАЛИЗ ТРАФИКА</div>
+            <div class="modal-row">
+                <span class="modal-label">Уровень загруженности:</span>
+                <span class="modal-value" style="color: ${data.trafficAnalysis.color}; font-weight: bold;">${data.trafficAnalysis.trafficLevel} (${data.trafficAnalysis.probability}%)</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Максимальная скорость:</span>
+                <span class="modal-value">${data.trafficAnalysis.maxSpeed} км/ч</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Фактическая скорость:</span>
+                <span class="modal-value">${data.trafficAnalysis.actualSpeed} км/ч${data.trafficAnalysis.speedReduction > 0 ? ` (-${data.trafficAnalysis.speedReduction}%)` : ''}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Риск заторов:</span>
+                <span class="modal-value">${data.trafficAnalysis.congestionRisk}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Часы пик:</span>
+                <span class="modal-value">${data.trafficAnalysis.peakHours.join(', ')}</span>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Анализ:</span>
+                <ul class="factor-list">${data.trafficAnalysis.reasoning.map(r => `<li>${escapeHtml(r)}</li>`).join('')}</ul>
+            </div>
+            <div class="modal-row">
+                <span class="modal-label">Рекомендация:</span>
+                <div class="recommendation-box">${escapeHtml(data.trafficAnalysis.recommendation)}</div>
+            </div>
+        </div>
+        ` : ''}
 
         ${data.hasPedestrianArea ? `
         <div class="modal-section">
@@ -5024,6 +5152,462 @@ function displayFullInfo(data) {
     });
 
     updateTimestamp();
+}
+
+// ============================================================
+//   РАСЧЁТ ВРЕМЕНИ ВЫСЫХАНИЯ ПОВЕРХНОСТИ
+// ============================================================
+function calculateDryingTime(factors, surfaceType) {
+    let baseTime = { asphalt: 120, concrete: 150, sidewalk: 180, soil: 240 }[surfaceType] || 120;
+
+    const tempCoef = factors.temperature > 25 ? 0.6
+                   : factors.temperature > 15 ? 0.8
+                   : factors.temperature > 5  ? 1.0
+                   : factors.temperature > 0  ? 1.3
+                   : 2.0;
+
+    const windCoef = factors.windSpeed > 15 ? 0.6
+                   : factors.windSpeed > 10 ? 0.7
+                   : factors.windSpeed > 5  ? 0.85
+                   : 1.0;
+
+    const humidityCoef = factors.humidity > 85 ? 1.5
+                       : factors.humidity > 70 ? 1.3
+                       : factors.humidity > 50 ? 1.1
+                       : 1.0;
+
+    const sunCoef = factors.sunExposure > 80 ? 0.5
+                  : factors.sunExposure > 60 ? 0.7
+                  : factors.sunExposure > 40 ? 0.85
+                  : factors.sunExposure > 20 ? 1.0
+                  : 1.3;
+
+    const drainageCoef = { excellent: 0.6, good: 0.8, moderate: 1.0, poor: 1.5, very_poor: 2.0 }[factors.drainage] || 1.0;
+
+    const slopeCoef = factors.slope > 10 ? 0.7
+                    : factors.slope > 5  ? 0.85
+                    : factors.slope > 2  ? 1.0
+                    : 1.3;
+
+    const totalTime = baseTime * tempCoef * windCoef * humidityCoef * sunCoef * drainageCoef * slopeCoef;
+    const hours = Math.floor(totalTime / 60);
+    const minutes = Math.round(totalTime % 60);
+
+    if (totalTime < 60) return `${minutes}мин`;
+    if (hours >= 24) return `${Math.round(hours / 24)}д ${hours % 24}ч`;
+    return `${hours}ч ${minutes}мин`;
+}
+
+// ============================================================
+//   БАЙЕСОВСКОЕ ОБНОВЛЕНИЕ ВЕРОЯТНОСТИ
+// ============================================================
+function updateBayesian(priorP, likelihood, evidence) {
+    return priorP * (1 - evidence) + likelihood * evidence;
+}
+
+function getConfidenceFromScore(score) {
+    if (score >= 75) return 'Высокая';
+    if (score >= 50) return 'Средняя';
+    return 'Низкая';
+}
+
+// ============================================================
+//   ИНДУКТИВНЫЙ АНАЛИЗ СОСТОЯНИЯ ПОВЕРХНОСТИ
+// ============================================================
+function analyzeSurfaceWithProbability(weatherData, roadData, locationData) {
+    const hour = new Date().getHours();
+    const timeOfDay = hour >= 6 && hour < 12 ? 'morning'
+                    : hour >= 12 && hour < 18 ? 'day'
+                    : hour >= 18 && hour < 22 ? 'evening'
+                    : 'night';
+
+    const sunExposure = weatherData.cloudCover != null ? Math.max(0, 100 - weatherData.cloudCover) : 50;
+
+    const baseSurfaceType = roadData.roadSurfaceRaw || 'asphalt';
+    const surfaceTypeNorm = ['soil', 'grass', 'dirt', 'ground'].includes(baseSurfaceType) ? 'soil'
+                          : ['paving_stones', 'cobblestone', 'sett'].includes(baseSurfaceType) ? 'sidewalk'
+                          : baseSurfaceType === 'concrete' ? 'concrete'
+                          : 'asphalt';
+
+    const precip = weatherData.precipitation || 0;
+    const precip3h = precip * 3;
+    const precip6h = precip * 6;
+    const precip24h = precip * 24;
+
+    const factors = {
+        precipitation1h:  precip,
+        precipitation3h:  precip3h,
+        precipitation6h:  precip6h,
+        precipitation24h: precip24h,
+        temperature:   weatherData.temp || 15,
+        humidity:      weatherData.humidity || 60,
+        windSpeed:     weatherData.windSpeed || 5,
+        cloudCover:    weatherData.cloudCover || 50,
+        timeOfDay,
+        sunExposure,
+        surfaceType:   surfaceTypeNorm,
+        drainage:      'good',
+        slope:         5,
+        isShaded:      sunExposure < 20,
+        hasRoof:       false
+    };
+
+    const rules = [
+        {
+            name: 'recent_rain_warm',
+            condition: (f) => f.precipitation1h > 1 && f.temperature > 5,
+            result: { state: 'wet', weight: 0.8, reason: 'Недавний дождь' }
+        },
+        {
+            name: 'rain_high_humidity',
+            condition: (f) => f.precipitation3h > 5 && f.humidity > 80,
+            result: { state: 'very_wet', weight: 0.9, reason: 'Сильный дождь + высокая влажность' }
+        },
+        {
+            name: 'freezing_wet',
+            condition: (f) => f.temperature < 0 && f.precipitation6h > 0,
+            result: { state: 'ice', weight: 0.85, reason: 'Замерзание воды' }
+        },
+        {
+            name: 'near_freezing',
+            condition: (f) => f.temperature >= -2 && f.temperature <= 2 && f.precipitation1h > 0,
+            result: { state: 'black_ice_risk', weight: 0.7, reason: 'Риск гололёда' }
+        },
+        {
+            name: 'wind_sun_drying',
+            condition: (f) => f.windSpeed > 10 && f.sunExposure > 70 && f.cloudCover < 30,
+            result: { state: 'drying', weight: -0.5, reason: 'Ветер и солнце ускоряют высыхание' }
+        },
+        {
+            name: 'shaded_poor_drainage',
+            condition: (f) => f.isShaded && f.drainage === 'poor',
+            result: { state: 'wet', weight: 0.6, reason: 'Плохой дренаж в тени' }
+        },
+        {
+            name: 'flat_rain_puddles',
+            condition: (f) => f.slope < 2 && f.precipitation3h > 3,
+            result: { state: 'puddles', weight: 0.75, reason: 'Ровная поверхность собирает воду' }
+        },
+        {
+            name: 'soil_heavy_rain',
+            condition: (f) => f.surfaceType === 'soil' && f.precipitation24h > 10,
+            result: { state: 'muddy', weight: 0.9, reason: 'Размытая почва' }
+        },
+        {
+            name: 'night_dew',
+            condition: (f) => f.timeOfDay === 'night' && f.temperature < 10 && f.humidity > 80,
+            result: { state: 'dew', weight: 0.6, reason: 'Ночная роса' }
+        },
+        {
+            name: 'covered',
+            condition: (f) => f.hasRoof,
+            result: { state: 'dry', weight: 0.95, reason: 'Защищено от осадков' }
+        }
+    ];
+
+    function analyzeOneSurface(surfType, factorsOverride) {
+        const f = { ...factors, ...factorsOverride };
+        const triggered = rules.filter(r => r.condition(f));
+
+        let wetScore = 0;
+        const reasonList = [];
+
+        triggered.forEach(r => {
+            const w = r.result.weight;
+            wetScore += w;
+            if (w > 0) reasonList.push(`✓ ${r.result.reason}`);
+            else reasonList.push(`✗ ${r.result.reason.replace('ускоряют', 'ускоряет')}`);
+        });
+
+        if (wetScore <= 0 && precip < 0.1) reasonList.push('✓ Сухая погода');
+
+        const stateScore = Math.max(0, Math.min(1, wetScore));
+        const prob = Math.round(stateScore * 100);
+
+        let condition, conditionEn;
+        if (stateScore >= 0.85) { condition = 'Очень мокрое'; conditionEn = 'very_wet'; }
+        else if (stateScore >= 0.65) { condition = 'Мокрое'; conditionEn = 'wet'; }
+        else if (stateScore >= 0.45) { condition = 'Влажное'; conditionEn = 'damp'; }
+        else if (stateScore >= 0.25) { condition = 'Слегка влажное'; conditionEn = 'slightly_damp'; }
+        else { condition = 'Сухое'; conditionEn = 'dry'; }
+
+        if (f.temperature < 0 && f.precipitation6h > 0) { condition = 'Обледенелое'; conditionEn = 'ice'; }
+        if (f.temperature >= -2 && f.temperature <= 2 && f.precipitation1h > 0) { condition = 'Риск гололёда'; conditionEn = 'black_ice_risk'; }
+
+        return {
+            condition,
+            conditionEn,
+            probability: Math.max(0, Math.min(100, prob)),
+            confidence: getConfidenceFromScore(triggered.length * 20),
+            dryingTime: calculateDryingTime(f, surfType),
+            factors: reasonList
+        };
+    }
+
+    const roadFactors = { surfaceType: surfaceTypeNorm, drainage: 'good', slope: 5 };
+    const sidewalkFactors = { surfaceType: 'sidewalk', drainage: 'moderate', slope: 1, isShaded: true };
+    const soilFactors = { surfaceType: 'soil', drainage: factors.precipitation24h > 15 ? 'poor' : 'moderate', slope: 3 };
+
+    const roadResult = analyzeOneSurface('asphalt', roadFactors);
+    const sidewalkResult = analyzeOneSurface('sidewalk', sidewalkFactors);
+    const soilResult = analyzeOneSurface('soil', soilFactors);
+
+    const soilType = factors.precipitation24h > 20 ? 'Насыщенное водой'
+                   : factors.precipitation24h > 10 ? 'Влажная'
+                   : factors.temperature < 0 ? 'Мёрзлая'
+                   : 'Нормальная';
+
+    const drainageRate = factors.precipitation24h > 20 ? 'Медленный'
+                       : factors.precipitation24h > 5  ? 'Умеренный'
+                       : 'Хороший';
+
+    return {
+        road: roadResult,
+        sidewalk: sidewalkResult,
+        soil: {
+            ...soilResult,
+            soilType,
+            drainageRate
+        }
+    };
+}
+
+// ============================================================
+//   ИНДУКТИВНАЯ ВЕРОЯТНОСТНАЯ ОЦЕНКА ТРАФИКА
+// ============================================================
+function estimateTrafficWithInduction(roadData, weatherData, locationData, dateObj) {
+    const date = dateObj || new Date();
+    const hour = date.getHours();
+    const dow = date.getDay(); // 0=воскресенье
+    const isWeekday = dow >= 1 && dow <= 5;
+    const isPeakHour = isWeekday && ((hour >= 7 && hour <= 10) || (hour >= 17 && hour <= 20));
+
+    const rawType = (roadData.roadSurfaceRaw || '');
+    const highway = rawType || 'primary';
+    const maxSpeedVal = roadData.maxSpeed || 60;
+    const lanesVal = parseInt(roadData.lanes) || 2;
+
+    let roadTypeKey = 'primary';
+    const rt = roadData.roadType || '';
+    if (rt.includes('автомагистраль') || rt.includes('motorway')) roadTypeKey = 'motorway';
+    else if (rt.includes('trunk') || rt.includes('трасса')) roadTypeKey = 'trunk';
+    else if (rt.includes('primary') || rt.includes('главная') || rt.includes('первич')) roadTypeKey = 'primary';
+    else if (rt.includes('secondary') || rt.includes('вторич')) roadTypeKey = 'secondary';
+    else if (rt.includes('residential') || rt.includes('жилая')) roadTypeKey = 'residential';
+
+    const isCity = !!(locationData && locationData.city && locationData.city !== 'Н/Д');
+    const isCityCenter = isCity && !!(locationData.district && (
+        locationData.district.toLowerCase().includes('центр') ||
+        locationData.district.toLowerCase().includes('center')
+    ));
+
+    const isRaining = (weatherData.precipitation || 0) > 0.5;
+    const isSnowing = isRaining && (weatherData.temp || 15) < 1;
+    const isFoggy = (weatherData.visibility || 10) < 1;
+    const isIcy = (weatherData.temp || 15) < 0 && isRaining;
+
+    const factors = {
+        roadType: roadTypeKey,
+        maxSpeed: maxSpeedVal,
+        lanes: lanesVal,
+        hour,
+        dayOfWeek: dow,
+        isWeekday,
+        isPeakHour,
+        isCity,
+        isCityCenter,
+        nearbyPOIs: { schools: false, offices: isCityCenter, malls: false, stations: false },
+        isRaining,
+        isSnowing,
+        isFoggy,
+        isIcy,
+        visibility: weatherData.visibility || 10
+    };
+
+    const trafficRules = [
+        {
+            condition: (f) => f.roadType === 'motorway' && f.isPeakHour && f.isWeekday,
+            impact: +50, reason: '🚗 Автомагистраль в час пик'
+        },
+        {
+            condition: (f) => f.isCityCenter && f.isWeekday && f.hour >= 8 && f.hour <= 20,
+            impact: +30, reason: '🏙️ Центр города в рабочее время'
+        },
+        {
+            condition: (f) => f.nearbyPOIs.schools && f.hour >= 7 && f.hour <= 9,
+            impact: +20, reason: '🎓 Школы рядом (утренняя доставка)'
+        },
+        {
+            condition: (f) => f.nearbyPOIs.offices && f.isPeakHour,
+            impact: +25, reason: '💼 Офисный район'
+        },
+        {
+            condition: (f) => f.nearbyPOIs.malls && !f.isWeekday && f.hour >= 11 && f.hour <= 20,
+            impact: +15, reason: '🛍️ Торговый центр (выходные)'
+        },
+        {
+            condition: (f) => f.isRaining,
+            impact: +20, speedReduction: 20, reason: '🌧️ Дождь (скорость -20%)'
+        },
+        {
+            condition: (f) => f.isSnowing,
+            impact: +35, speedReduction: 35, reason: '❄️ Снегопад (скорость -35%)'
+        },
+        {
+            condition: (f) => f.isFoggy,
+            impact: +25, speedReduction: 30, reason: '🌫️ Туман (видимость снижена)'
+        },
+        {
+            condition: (f) => f.isIcy,
+            impact: +40, speedReduction: 50, reason: '🧊 Гололёд (скорость -50%)'
+        },
+        {
+            condition: (f) => f.isWeekday && (f.hour >= 22 || f.hour <= 6),
+            impact: -30, reason: '🌙 Ночное время (низкая активность)'
+        },
+        {
+            condition: (f) => f.lanes >= 4,
+            impact: -15, reason: '🛣️ Широкая дорога (4+ полос)'
+        },
+        {
+            condition: (f) => f.lanes <= 2 && f.roadType !== 'residential',
+            impact: +20, reason: '🚧 Узкая дорога (2 полосы)'
+        }
+    ];
+
+    let trafficScore = 20;
+    let totalSpeedReduction = 0;
+    const reasoning = [];
+
+    trafficRules.forEach(rule => {
+        if (rule.condition(factors)) {
+            trafficScore += rule.impact;
+            if (rule.speedReduction) totalSpeedReduction += rule.speedReduction;
+            reasoning.push(`✓ ${rule.reason}`);
+        }
+    });
+
+    trafficScore = Math.max(0, Math.min(100, trafficScore));
+    if (isPeakHour) reasoning.push(`✓ Час пик (${hour}:00)`);
+
+    let trafficLevel, trafficLevelEn, color, congestionRisk;
+    if (trafficScore >= 75) {
+        trafficLevel = 'Высокий'; trafficLevelEn = 'heavy'; color = '#ff4400'; congestionRisk = 'Критический';
+    } else if (trafficScore >= 55) {
+        trafficLevel = 'Умеренный'; trafficLevelEn = 'moderate'; color = '#ffaa00'; congestionRisk = 'Высокий';
+    } else if (trafficScore >= 35) {
+        trafficLevel = 'Средний'; trafficLevelEn = 'medium'; color = '#ffff00'; congestionRisk = 'Средний';
+    } else {
+        trafficLevel = 'Низкий'; trafficLevelEn = 'light'; color = '#00ff00'; congestionRisk = 'Низкий';
+    }
+
+    const speedReductionPct = Math.min(60, totalSpeedReduction);
+    const actualSpeed = Math.round(maxSpeedVal * (1 - speedReductionPct / 100));
+    const probability = Math.min(95, 40 + reasoning.length * 8);
+
+    const peakHours = isWeekday ? ['08:00-10:00', '17:00-20:00'] : ['12:00-20:00'];
+
+    let recommendation = `Уровень трафика: ${trafficLevel}.`;
+    if (speedReductionPct > 0) recommendation += ` Рекомендуется двигаться со скоростью не выше ${actualSpeed} км/ч.`;
+    if (isRaining) recommendation += ' Соблюдайте дистанцию на мокрой дороге.';
+    if (isIcy) recommendation += ' Осторожно: возможен гололёд!';
+
+    return {
+        trafficLevel,
+        trafficLevelEn,
+        probability,
+        confidence: getConfidenceFromScore(probability),
+        trafficScore,
+        color,
+        maxSpeed: maxSpeedVal,
+        actualSpeed,
+        speedReduction: speedReductionPct,
+        congestionRisk,
+        peakHours,
+        reasoning,
+        recommendation
+    };
+}
+
+// ============================================================
+//   КЛАСС ИНДИКАТОРА ЗАГРУЗКИ С ПРОГРЕССОМ
+// ============================================================
+class LoadingIndicator {
+    constructor() {
+        this.overlay = null;
+        this.progressFill = null;
+        this.progressText = null;
+        this.etaEl = null;
+        this.steps = [
+            { id: 'weather',    label: '🌡️ Погодные данные' },
+            { id: 'location',   label: '📍 Геолокация' },
+            { id: 'roads',      label: '🚗 Дорожные данные' },
+            { id: 'surface',    label: '🌧️ Анализ поверхности' },
+            { id: 'traffic',    label: '🚦 Оценка трафика' },
+            { id: 'airquality', label: '🌫️ Качество воздуха' },
+            { id: 'alerts',     label: '🚨 Метеоалерты' }
+        ];
+        this.completedCount = 0;
+    }
+
+    _createOverlay() {
+        const div = document.createElement('div');
+        div.className = 'li-overlay';
+        div.innerHTML = `
+            <div class="li-container">
+                <div class="li-title">🔄 ЗАГРУЗКА ДАННЫХ...</div>
+                <div class="li-progress">
+                    <div class="li-bar"><div class="li-fill"></div></div>
+                    <div class="li-pct">0%</div>
+                </div>
+                <div class="li-steps">
+                    ${this.steps.map(s => `
+                    <div class="li-step" data-step="${s.id}">
+                        <span class="li-step-icon">⏳</span>
+                        <span class="li-step-label">${s.label}</span>
+                    </div>`).join('')}
+                </div>
+                <div class="li-eta">Примерное время: <span class="li-eta-val">~5 сек</span></div>
+            </div>
+        `;
+        return div;
+    }
+
+    show() {
+        this.overlay = this._createOverlay();
+        document.body.appendChild(this.overlay);
+        requestAnimationFrame(() => this.overlay.classList.add('li-visible'));
+        this.progressFill = this.overlay.querySelector('.li-fill');
+        this.progressText = this.overlay.querySelector('.li-pct');
+        this.etaEl = this.overlay.querySelector('.li-eta-val');
+    }
+
+    updateProgress(stepId, status) {
+        if (!this.overlay) return;
+        const stepEl = this.overlay.querySelector(`.li-step[data-step="${stepId}"]`);
+        if (stepEl) {
+            const iconEl = stepEl.querySelector('.li-step-icon');
+            iconEl.textContent = status === 'success' ? '✓' : '✗';
+            stepEl.classList.add(status === 'success' ? 'li-step-done' : 'li-step-error');
+        }
+        this.completedCount++;
+        const pct = Math.round((this.completedCount / this.steps.length) * 100);
+        if (this.progressFill) this.progressFill.style.width = pct + '%';
+        if (this.progressText) this.progressText.textContent = pct + '%';
+        const remaining = this.steps.length - this.completedCount;
+        if (this.etaEl) this.etaEl.textContent = remaining > 0 ? `~${remaining} сек` : 'Готово';
+    }
+
+    hide() {
+        if (!this.overlay) return;
+        this.overlay.classList.remove('li-visible');
+        setTimeout(() => {
+            if (this.overlay && this.overlay.parentNode) {
+                this.overlay.parentNode.removeChild(this.overlay);
+            }
+            this.overlay = null;
+        }, 400);
+    }
 }
 
 // Показать индикатор загрузки
