@@ -1,23 +1,51 @@
 // js/modules/api/openweather.js - OpenWeatherMap API integration
 
+import { openWeatherMapLimiter } from '../utils/rateLimit.js';
+import { weatherCache } from '../utils/cache.js';
+import { handleApiError } from '../utils/errorHandler.js';
+
 const BASE_URL = 'https://api.openweathermap.org';
 
 function getApiKey() {
     return (typeof window !== 'undefined' && window.OPENWEATHER_API_KEY) || '';
 }
 
+/** Returns a URL string with the API key replaced by '***' for safe logging. */
+function sanitizeUrl(url, apiKey) {
+    return apiKey ? url.replace(apiKey, '***') : url;
+}
+
+/**
+ * Fetches current weather conditions from OpenWeatherMap.
+ * @param {number} lat - Latitude
+ * @param {number} lng - Longitude
+ * @returns {Promise<object|null>}
+ */
 export async function getCurrentWeather(lat, lng) {
     const apiKey = getApiKey();
     if (!apiKey) {
-        console.warn('OpenWeatherMap API key not configured');
+        console.warn('⚠️ OPENWEATHER_API_KEY не настроен');
         return null;
     }
+
+    const cacheKey = `weather-${lat.toFixed(4)}-${lng.toFixed(4)}`;
+    const cached = weatherCache.get(cacheKey);
+    if (cached) {
+        console.log(`✅ Кэш погоды: попадание для ${cacheKey}`);
+        return cached;
+    }
+
+    await openWeatherMapLimiter.acquire();
     try {
         const url = `${BASE_URL}/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${apiKey}&units=metric&lang=ru`;
+        console.log(`🌤️ GET ${sanitizeUrl(url, apiKey)}`);
+        const startTime = performance.now();
         const response = await fetch(url);
+        const elapsed = Math.round(performance.now() - startTime);
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        console.log(`✅ getCurrentWeather (${elapsed}мс)`);
         const data = await response.json();
-        return {
+        const result = {
             temp: data.main.temp,
             feelsLike: data.main.feels_like,
             tempMin: data.main.temp_min,
@@ -44,21 +72,42 @@ export async function getCurrentWeather(lat, lng) {
             timezone: data.timezone,
             cityName: data.name
         };
+        weatherCache.set(cacheKey, result);
+        console.log(`💾 Погода сохранена в кэш: ${cacheKey}`);
+        return result;
     } catch (error) {
-        console.error('Error fetching current weather:', error);
-        return null;
+        return handleApiError(error, 'getCurrentWeather');
     }
 }
 
+/**
+ * Fetches One Call API data (hourly, daily, alerts) from OpenWeatherMap.
+ * @param {number} lat - Latitude
+ * @param {number} lng - Longitude
+ * @returns {Promise<object|null>}
+ */
 export async function getOneCallData(lat, lng) {
     const apiKey = getApiKey();
     if (!apiKey) return null;
+
+    const cacheKey = `onecall-${lat.toFixed(4)}-${lng.toFixed(4)}`;
+    const cached = weatherCache.get(cacheKey);
+    if (cached) {
+        console.log(`✅ Кэш onecall: попадание для ${cacheKey}`);
+        return cached;
+    }
+
+    await openWeatherMapLimiter.acquire();
     try {
         const url = `${BASE_URL}/data/3.0/onecall?lat=${lat}&lon=${lng}&appid=${apiKey}&units=metric&lang=ru`;
+        console.log(`🌤️ GET ${sanitizeUrl(url, apiKey)}`);
+        const startTime = performance.now();
         const response = await fetch(url);
+        const elapsed = Math.round(performance.now() - startTime);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        console.log(`✅ getOneCallData (${elapsed}мс)`);
         const data = await response.json();
-        return {
+        const result = {
             current: _parseCurrentWeather(data.current),
             minutely: (data.minutely || []).map(m => ({
                 dt: m.dt,
@@ -105,21 +154,42 @@ export async function getOneCallData(lat, lng) {
                 description: a.description, tags: a.tags || []
             }))
         };
+        weatherCache.set(cacheKey, result);
+        console.log(`💾 OneCall сохранён в кэш: ${cacheKey}`);
+        return result;
     } catch (error) {
-        console.error('Error fetching One Call data:', error);
-        return null;
+        return handleApiError(error, 'getOneCallData');
     }
 }
 
+/**
+ * Fetches a 5-day/3-hour forecast from OpenWeatherMap.
+ * @param {number} lat - Latitude
+ * @param {number} lng - Longitude
+ * @returns {Promise<object|null>}
+ */
 export async function get5DayForecast(lat, lng) {
     const apiKey = getApiKey();
     if (!apiKey) return null;
+
+    const cacheKey = `forecast-${lat.toFixed(4)}-${lng.toFixed(4)}`;
+    const cached = weatherCache.get(cacheKey);
+    if (cached) {
+        console.log(`✅ Кэш прогноза: попадание для ${cacheKey}`);
+        return cached;
+    }
+
+    await openWeatherMapLimiter.acquire();
     try {
         const url = `${BASE_URL}/data/2.5/forecast?lat=${lat}&lon=${lng}&appid=${apiKey}&units=metric&lang=ru`;
+        console.log(`🌤️ GET ${sanitizeUrl(url, apiKey)}`);
+        const startTime = performance.now();
         const response = await fetch(url);
+        const elapsed = Math.round(performance.now() - startTime);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        console.log(`✅ get5DayForecast (${elapsed}мс)`);
         const data = await response.json();
-        return {
+        const result = {
             list: data.list.map(item => ({
                 dt: item.dt,
                 time: new Date(item.dt * 1000).toLocaleString('ru-RU'),
@@ -138,23 +208,44 @@ export async function get5DayForecast(lat, lng) {
                 sunrise: data.city.sunrise, sunset: data.city.sunset
             }
         };
+        weatherCache.set(cacheKey, result);
+        console.log(`💾 Прогноз сохранён в кэш: ${cacheKey}`);
+        return result;
     } catch (error) {
-        console.error('Error fetching 5-day forecast:', error);
-        return null;
+        return handleApiError(error, 'get5DayForecast');
     }
 }
 
+/**
+ * Fetches air pollution data from OpenWeatherMap.
+ * @param {number} lat - Latitude
+ * @param {number} lng - Longitude
+ * @returns {Promise<object|null>}
+ */
 export async function getAirPollution(lat, lng) {
     const apiKey = getApiKey();
     if (!apiKey) return null;
+
+    const cacheKey = `airpollution-${lat.toFixed(4)}-${lng.toFixed(4)}`;
+    const cached = weatherCache.get(cacheKey);
+    if (cached) {
+        console.log(`✅ Кэш загрязнения воздуха: попадание для ${cacheKey}`);
+        return cached;
+    }
+
+    await openWeatherMapLimiter.acquire();
     try {
         const url = `${BASE_URL}/data/2.5/air_pollution?lat=${lat}&lon=${lng}&appid=${apiKey}`;
+        console.log(`🌤️ GET ${sanitizeUrl(url, apiKey)}`);
+        const startTime = performance.now();
         const response = await fetch(url);
+        const elapsed = Math.round(performance.now() - startTime);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        console.log(`✅ getAirPollution (${elapsed}мс)`);
         const data = await response.json();
         const item = data.list[0];
         const aqiLabels = { 1: 'Отличное', 2: 'Хорошее', 3: 'Умеренное', 4: 'Плохое', 5: 'Очень плохое' };
-        return {
+        const result = {
             aqi: item.main.aqi,
             aqiText: aqiLabels[item.main.aqi] || 'Нет данных',
             co: item.components.co?.toFixed(1),
@@ -166,9 +257,11 @@ export async function getAirPollution(lat, lng) {
             pm10: item.components.pm10?.toFixed(1),
             nh3: item.components.nh3?.toFixed(1)
         };
+        weatherCache.set(cacheKey, result);
+        console.log(`💾 Загрязнение воздуха сохранено в кэш: ${cacheKey}`);
+        return result;
     } catch (error) {
-        console.error('Error fetching air pollution:', error);
-        return null;
+        return handleApiError(error, 'getAirPollution');
     }
 }
 
@@ -189,8 +282,10 @@ function _parseCurrentWeather(current) {
 export async function getWeatherAlerts(lat, lng) {
     const apiKey = getApiKey();
     if (!apiKey) return { weatherAlerts: [] };
+    await openWeatherMapLimiter.acquire();
     try {
         const url = `${BASE_URL}/data/3.0/onecall?lat=${lat}&lon=${lng}&exclude=minutely,hourly,daily&appid=${apiKey}`;
+        console.log(`🌤️ GET ${sanitizeUrl(url, apiKey)}`);
         const response = await fetch(url);
         const data = await response.json();
         const alerts = (data.alerts || []).map(alert => ({
@@ -203,7 +298,7 @@ export async function getWeatherAlerts(lat, lng) {
         }));
         return { weatherAlerts: alerts };
     } catch (error) {
-        console.error('Ошибка получения алертов:', error);
+        handleApiError(error, 'getWeatherAlerts');
         return { weatherAlerts: [] };
     }
 }
@@ -211,8 +306,10 @@ export async function getWeatherAlerts(lat, lng) {
 export async function getAirQuality(lat, lng) {
     const apiKey = getApiKey();
     if (!apiKey) return { aqi: null, aqiText: 'Нет данных' };
+    await openWeatherMapLimiter.acquire();
     try {
         const url = `${BASE_URL}/data/2.5/air_pollution?lat=${lat}&lon=${lng}&appid=${apiKey}`;
+        console.log(`🌤️ GET ${sanitizeUrl(url, apiKey)}`);
         const response = await fetch(url);
         const data = await response.json();
         const aqi = data.list[0].main.aqi;
@@ -228,7 +325,7 @@ export async function getAirQuality(lat, lng) {
             so2: components.so2?.toFixed(1) || 'Н/Д'
         };
     } catch (error) {
-        console.error('Ошибка получения качества воздуха:', error);
+        handleApiError(error, 'getAirQuality');
         return { aqi: null, aqiText: 'Нет данных' };
     }
 }
@@ -236,8 +333,10 @@ export async function getAirQuality(lat, lng) {
 export async function getMinutelyForecast(lat, lng) {
     const apiKey = getApiKey();
     if (!apiKey) return { minutelyForecast: [] };
+    await openWeatherMapLimiter.acquire();
     try {
         const url = `${BASE_URL}/data/3.0/onecall?lat=${lat}&lon=${lng}&exclude=current,hourly,daily,alerts&appid=${apiKey}`;
+        console.log(`🌤️ GET ${sanitizeUrl(url, apiKey)}`);
         const response = await fetch(url);
         const data = await response.json();
         const minutely = (data.minutely || []).map(m => ({
@@ -246,7 +345,7 @@ export async function getMinutelyForecast(lat, lng) {
         }));
         return { minutelyForecast: minutely };
     } catch (error) {
-        console.error('Ошибка получения минутного прогноза:', error);
+        handleApiError(error, 'getMinutelyForecast');
         return { minutelyForecast: [] };
     }
 }

@@ -2,6 +2,7 @@
 
 import { sleep } from '../utils/helpers.js';
 import { getRoadTypeName, getSurfaceName } from '../utils/formatters.js';
+import { retryWithBackoff } from '../utils/retry.js';
 
 function getRoadImportance(highway) {
     const importance = {
@@ -34,11 +35,15 @@ export async function getRoadData(lat, lng, attempt = 1) {
             out body 10;`;
 
         const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
-        const response = await fetch(url);
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
+        console.log(`🚗 GET Overpass дороги r=${radius}м`);
+        const data = await retryWithBackoff(async () => {
+            const startTime = performance.now();
+            const response = await fetch(url);
+            const elapsed = Math.round(performance.now() - startTime);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            console.log(`✅ getRoadData (${elapsed}мс)`);
+            return response.json();
+        }, 2, 500);
 
         if (data.elements && data.elements.length > 0) {
             const bestRoad = data.elements
@@ -98,11 +103,15 @@ export async function getPedestrianData(lat, lng, attempt = 1) {
             out body 10;`;
 
         const url = `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(query)}`;
-        const response = await fetch(url);
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const data = await response.json();
+        console.log(`🚶 GET Overpass пешеходные r=${radius}м`);
+        const data = await retryWithBackoff(async () => {
+            const startTime = performance.now();
+            const response = await fetch(url);
+            const elapsed = Math.round(performance.now() - startTime);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            console.log(`✅ getPedestrianData (${elapsed}мс)`);
+            return response.json();
+        }, 2, 500);
 
         if (data.elements && data.elements.length > 0) {
             const pedestrianSurfaces = data.elements

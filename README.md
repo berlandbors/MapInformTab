@@ -27,13 +27,13 @@ js/
 ├── state.js                  # Общее состояние приложения
 └── modules/
     ├── api/
-    │   ├── openweather.js    # OpenWeatherMap API (4 эндпоинта)
-    │   ├── openmeteo.js      # Open-Meteo API
-    │   ├── nominatim.js      # Геокодинг (OSM)
-    │   ├── overpass.js       # Дорожные данные (OSM)
-    │   ├── usgs.js           # Сейсмика
+    │   ├── openweather.js    # OpenWeatherMap API (4 эндпоинта + rate limiting + cache)
+    │   ├── openmeteo.js      # Open-Meteo API (retry)
+    │   ├── nominatim.js      # Геокодинг (OSM, retry + cache)
+    │   ├── overpass.js       # Дорожные данные (OSM, retry)
+    │   ├── usgs.js           # Сейсмика (retry)
     │   ├── metar.js          # Авиационная погода
-    │   └── worldtime.js      # Часовые пояса
+    │   └── worldtime.js      # Часовые пояса (retry)
     ├── analysis/
     │   ├── surface.js        # Индуктивный анализ поверхности
     │   ├── traffic.js        # Вероятностная оценка трафика
@@ -53,7 +53,11 @@ js/
         ├── helpers.js        # Общие утилиты
         ├── astronomy.js      # Астрономические расчёты
         ├── formatters.js     # Форматирование данных
-        └── validators.js     # Валидация
+        ├── validators.js     # Валидация
+        ├── errorHandler.js   # Централизованная обработка ошибок
+        ├── retry.js          # Экспоненциальный повтор запросов
+        ├── rateLimit.js      # Ограничитель частоты запросов
+        └── cache.js          # Кэш в памяти с TTL
 ```
 
 ## Настройка OpenWeatherMap API
@@ -92,6 +96,28 @@ js/
 | Сейсмика | [USGS Earthquake API](https://earthquake.usgs.gov) | Не нужен |
 | Часовые пояса | [WorldTimeAPI](https://worldtimeapi.org) | Не нужен |
 | METAR | [aviationweather.gov](https://aviationweather.gov) | Не нужен |
+
+## Устойчивость к ошибкам
+
+### Обработка ошибок
+- Сбой одного API не нарушает весь цикл сканирования (каждый `Promise.all` использует `.catch()`)
+- При недоступности OpenWeatherMap приложение продолжает работу только с данными Open-Meteo
+- Централизованная обработка через `AppError` и `handleApiError`
+
+### Повтор запросов
+- Все внешние API используют экспоненциальный повтор (`retryWithBackoff`): 3 попытки, базовая задержка 1 с
+- Overpass API: 2 попытки при временных ошибках + расширение радиуса поиска при пустом ответе
+
+### Ограничение частоты запросов (Rate Limiting)
+- OpenWeatherMap API ограничен 60 запросами/минуту (бесплатный план)
+- `RateLimiter` автоматически ставит запросы в очередь при приближении к лимиту
+- Предупреждение в консоли при достижении лимита
+
+### Кэширование
+- Ответы OpenWeatherMap кэшируются на **5 минут** (повторный клик на ту же точку использует кэш)
+- Ответы Nominatim (геокодинг) кэшируются на **15 минут**
+- Ключи кэша округляются до 4 знаков после запятой (~11 м точность)
+- Попадание/промах кэша логируется в консоль
 
 ## Запуск
 
