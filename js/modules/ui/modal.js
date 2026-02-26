@@ -678,7 +678,33 @@ export function createDetailedSurfaceInfo(surfaceData) {
     const cov = surfaceData.coverage || {};
     const di = surfaceData.drivingImpact || {};
     const fc = surfaceData.forecast || {};
+    const bd = surfaceData.brakingDistances || {};
+    const aq = surfaceData.aquaplaning || {};
     const color = getSeverityColor(surfaceData.severity);
+
+    // Minutely precipitation bar (max 60 minutes, up to 10 bars)
+    const minutelyData = pa.minutelyData || [];
+    const minutelyBar = minutelyData.length > 0 ? (() => {
+        const step = Math.max(1, Math.floor(minutelyData.length / 10));
+        const samples = minutelyData.filter((_, i) => i % step === 0).slice(0, 10);
+        const maxP = Math.max(...samples.map(m => m.precipitation || 0), 0.01);
+        const bars = ['▁','▂','▃','▄','▅','▆','▇','█'];
+        return samples.map(m => {
+            const idx = Math.min(bars.length - 1, Math.round(((m.precipitation || 0) / maxP) * (bars.length - 1)));
+            return bars[idx];
+        }).join('');
+    })() : null;
+
+    // Braking distance rows helper
+    function brakingRow(label, data, dryDist) {
+        if (!data) return '';
+        const delta = data.totalDistance - dryDist;
+        const deltaStr = delta > 0 ? `+${delta} м` : `${delta} м`;
+        return `<div class="period-item">
+            <span>${label}</span>
+            <span>🟢${dryDist} м → <strong>${data.totalDistance} м</strong> (${deltaStr})</span>
+        </div>`;
+    }
 
     return `
         <div class="surface-detailed">
@@ -693,6 +719,11 @@ export function createDetailedSurfaceInfo(surfaceData) {
 
             <div class="detail-section">
                 <div class="detail-section-title">📊 АНАЛИЗ ОСАДКОВ</div>
+                ${pa.precipType && pa.precipType !== 'Нет' ? `
+                <div class="precip-type-row">
+                    <span>Тип осадков: <strong>${escapeHtml(pa.precipType)}</strong></span>
+                    ${pa.precipIntensityClass ? `<span class="precip-intensity-badge">${escapeHtml(pa.precipIntensityClass)}</span>` : ''}
+                </div>` : ''}
                 <div class="precip-periods">
                     <div class="period-item"><span>Последний час</span><span>${pa.total1h ?? 0} мм</span></div>
                     <div class="period-item"><span>Последние 3 ч</span><span>${pa.total3h ?? 0} мм</span></div>
@@ -700,38 +731,57 @@ export function createDetailedSurfaceInfo(surfaceData) {
                     <div class="period-item"><span>За сутки</span><span>${pa.total24h ?? 0} мм</span></div>
                 </div>
                 <div class="precip-current">
-                    <div class="period-item"><span>Интенсивность</span><span>${(pa.currentIntensity || 0) > 0.1 ? (pa.currentIntensity || 0) + ' мм/ч' : 'Нет'}</span></div>
+                    <div class="period-item"><span>Интенсивность</span><span>${(pa.currentIntensity || 0) > 0.1 ? (pa.currentIntensity || 0) + ' мм/ч' + (pa.precipIntensityClass ? ' (' + pa.precipIntensityClass + ')' : '') : 'Нет'}</span></div>
                     <div class="period-item"><span>Последний дождь</span><span>${getHoursText(pa.hoursSinceRain ?? 0)}</span></div>
                     <div class="period-item"><span>Продолжался</span><span>${pa.continuousRainHours ?? 0} ч</span></div>
                 </div>
+                ${minutelyBar ? `
+                <div class="minutely-bar">
+                    <div class="minutely-bar-label">Минутный прогноз (60 мин):</div>
+                    <div class="minutely-bar-chart">${minutelyBar}</div>
+                </div>` : ''}
             </div>
 
             <div class="detail-section">
                 <div class="detail-section-title">🌡️ ТЕМПЕРАТУРНЫЙ АНАЛИЗ</div>
                 <div class="temp-grid">
                     <div class="temp-item"><span>Температура воздуха</span><span>${da.airTemp ?? 'Н/Д'}°C</span></div>
-                    <div class="temp-item"><span>Температура поверхности</span><span>${da.surfaceTemp ?? 'Н/Д'}°C</span></div>
+                    <div class="temp-item">
+                        <span>Температура поверхности</span>
+                        <span>${da.surfaceTemp ?? 'Н/Д'}°C${da.surfaceTempCalc ? ` <span class="temp-calc-hint" title="${escapeHtml(da.surfaceTempCalc)}">ℹ️</span>` : ''}</span>
+                    </div>
                     <div class="temp-item"><span>Точка росы</span><span>${da.dewpoint ?? 'Н/Д'}°C</span></div>
-                    <div class="temp-item"><span>Разница (воздух-роса)</span><span>${da.tempDiff !== undefined ? (da.tempDiff >= 0 ? '+' : '') + da.tempDiff : 'Н/Д'}°C</span></div>
+                    <div class="temp-item"><span>Разница (поверхность–роса)</span><span>${da.tempDiff !== undefined ? (da.tempDiff >= 0 ? '+' : '') + da.tempDiff : 'Н/Д'}°C</span></div>
                 </div>
                 <div class="temp-status">
-                    ${da.isAboveDewpoint
-                        ? '✅ Поверхность выше точки росы — активное высыхание'
-                        : '⚠️ Риск конденсации влаги на поверхности'}
+                    ${da.iceRisk
+                        ? '🔴 РИСК ОБЛЕДЕНЕНИЯ: поверхность ниже 0°C и ниже точки росы!'
+                        : da.isAboveDewpoint
+                            ? '✅ Поверхность выше точки росы — активное высыхание'
+                            : '⚠️ Поверхность близка к точке росы — риск конденсации'}
                 </div>
+                ${da.surfaceTempCalc ? `<div class="temp-calc-detail">└─ Расчёт: ${escapeHtml(da.surfaceTempCalc)}</div>` : ''}
             </div>
 
             <div class="detail-section">
                 <div class="detail-section-title">☀️ УСЛОВИЯ ВЫСЫХАНИЯ</div>
+                ${da.precipitation6h > 0 ? `
+                <div class="drying-water-balance">
+                    <div class="period-item"><span>Осадки (6ч)</span><span>${da.precipitation6h} мм</span></div>
+                    <div class="period-item"><span>└─ Испарение (1ч)</span><span>−${da.evaporationRate ?? 0} мм</span></div>
+                    <div class="period-item"><span>└─ Дренаж (1ч)</span><span>−${da.drainageRate ?? 0} мм</span></div>
+                    <div class="period-item"><span>Остаточная вода</span><span><strong>${da.residualWater ?? 0} мм</strong></span></div>
+                </div>` : ''}
                 <div class="drying-grid">
                     <div class="drying-item"><span>Солнечная радиация</span><span>${da.radiation ?? 0} Вт/м²</span></div>
                     <div class="drying-item"><span>Облачность</span><span>${da.cloudCover ?? 0}%</span></div>
-                    <div class="drying-item"><span>Скорость ветра</span><span>${da.windSpeed ?? 0} км/ч</span></div>
-                    <div class="drying-item"><span>Относительная влажность</span><span>${da.humidity ?? 0}%</span></div>
+                    <div class="drying-item"><span>Скорость ветра</span><span>${da.windSpeed ?? 0} м/с</span></div>
+                    <div class="drying-item"><span>Влажность</span><span>${da.humidity ?? 0}%</span></div>
                 </div>
                 <div class="evaporation-rate">
                     Скорость испарения: <strong>${da.evaporationRate ?? 0} мм/ч</strong>
                     (${getEvaporationLevel(da.evaporationRate ?? 0)})
+                    ${da.vpd !== undefined ? `· VPD: ${da.vpd} кПа` : ''}
                 </div>
                 ${(da.dryingHours || 0) > 0 ? `
                 <div class="drying-forecast">
@@ -756,12 +806,17 @@ export function createDetailedSurfaceInfo(surfaceData) {
 
             <div class="detail-section">
                 <div class="detail-section-title">🚗 ВЛИЯНИЕ НА ДВИЖЕНИЕ</div>
+                ${bd.frictionCoefficient !== undefined ? `
+                <div class="friction-info">
+                    <span>Коэффициент сцепления: <strong>${bd.frictionCoefficient}</strong></span>
+                    ${bd.dryFriction ? `<span class="friction-dry">(сухое: ${bd.dryFriction} · снижение: −${Math.round((1 - bd.frictionCoefficient / bd.dryFriction) * 100)}%)</span>` : ''}
+                </div>` : ''}
                 <div class="impact-grid-detailed">
                     <div class="impact-box">
                         <div class="impact-box-icon">🛑</div>
                         <div class="impact-box-label">Тормозной путь</div>
                         <div class="impact-box-value">${di.normalBrakingM ?? 60}→${di.newBrakingM ?? 60} м</div>
-                        <div class="impact-box-delta">${(di.newBrakingM || 60) > 60 ? '+' : ''}${(di.newBrakingM || 60) - 60} м</div>
+                        <div class="impact-box-delta">${(di.newBrakingM || 60) > (di.normalBrakingM || 60) ? '+' : ''}${(di.newBrakingM || 60) - (di.normalBrakingM || 60)} м</div>
                     </div>
                     <div class="impact-box">
                         <div class="impact-box-icon">🚗</div>
@@ -780,6 +835,24 @@ export function createDetailedSurfaceInfo(surfaceData) {
                         <div class="impact-box-value">${escapeHtml(di.responseLevel ?? 'Хорошая')}</div>
                     </div>
                 </div>
+                ${bd.at60kmh || bd.at90kmh || bd.at120kmh ? `
+                <div class="braking-table">
+                    <div class="braking-table-title">Тормозной путь по скоростям:</div>
+                    ${brakingRow('60 км/ч', bd.at60kmh, bd.at60kmh?.dryDistance ?? 0)}
+                    ${brakingRow('90 км/ч', bd.at90kmh, bd.at90kmh?.dryDistance ?? 0)}
+                    ${brakingRow('120 км/ч', bd.at120kmh, bd.at120kmh?.dryDistance ?? 0)}
+                </div>` : ''}
+                ${aq.risk ? `
+                <div class="aquaplaning-risk ${aq.risk}">
+                    <div class="aquaplaning-title">💦 РИСК АКВАПЛАНИРОВАНИЯ</div>
+                    <div class="period-item"><span>Критическая скорость</span><span>${aq.criticalSpeed} км/ч</span></div>
+                    <div class="period-item"><span>Глубина воды</span><span>~${aq.waterDepth} мм</span></div>
+                    <div class="aquaplaning-level ${aq.risk}">
+                        ${aq.risk === 'high' ? '🔴 ВЫСОКИЙ — немедленно снизьте скорость!'
+                          : aq.risk === 'moderate' ? '🟡 УМЕРЕННЫЙ — соблюдайте осторожность'
+                          : '🟢 Низкий'}
+                    </div>
+                </div>` : ''}
             </div>
 
             <div class="detail-section">
@@ -826,6 +899,25 @@ export function createDetailedSurfaceInfo(surfaceData) {
                 ` : ''}
             </div>
 
+            ${surfaceData.surfaceForecast && surfaceData.surfaceForecast.length > 0 ? `
+            <div class="detail-section">
+                <div class="detail-section-title">📈 ПРОГНОЗ СОСТОЯНИЯ (6 ЧАСОВ)</div>
+                <div class="trend-info">
+                    <span class="trend-indicator">${fc.trendIcon ?? '→'}</span>
+                    <span>Тренд: ${escapeHtml(fc.trend ?? 'Стабильно')}</span>
+                    ${fc.futureRainMm > 0 ? `<span>· Ожидается ${fc.futureRainMm} мм</span>` : ''}
+                </div>
+                <div class="surface-forecast-table">
+                    ${surfaceData.surfaceForecast.map((f, i) => `
+                    <div class="forecast-hour-row">
+                        <span class="forecast-hour">${i === 0 ? 'Сейчас' : '+' + i + 'ч'} (${String(f.hour).padStart(2, '0')}:00)</span>
+                        <span class="forecast-condition">${escapeHtml(f.condition)}</span>
+                        ${f.rain > 0 ? `<span class="forecast-rain">${f.rain} мм</span>` : '<span></span>'}
+                        <span class="forecast-temp">${f.temp}°C</span>
+                    </div>`).join('')}
+                </div>
+            </div>
+            ` : `
             <div class="detail-section">
                 <div class="detail-section-title">📈 ДИНАМИКА СОСТОЯНИЯ</div>
                 <div class="trend-info">
@@ -840,7 +932,7 @@ export function createDetailedSurfaceInfo(surfaceData) {
                     <span>Прогноз</span>
                     <span>${escapeHtml(fc.futureCondition ?? surfaceData.name)}</span>
                 </div>
-            </div>
+            </div>`}
 
             ${surfaceData.multiPointData ? `
             <div class="detail-section">

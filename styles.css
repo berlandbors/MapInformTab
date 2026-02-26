@@ -1815,6 +1815,157 @@ body {
     font-size: 18px;
 }
 
+/* ─── Новые элементы детального анализа поверхности ─── */
+
+/* Тип осадков */
+.precip-type-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #00cc00;
+    margin-bottom: 6px;
+    padding: 4px 6px;
+    background: rgba(0, 200, 255, 0.06);
+    border-left: 3px solid #00aaff;
+}
+.precip-intensity-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    background: rgba(255, 170, 0, 0.2);
+    border: 1px solid #ffaa00;
+    border-radius: 3px;
+    color: #ffaa00;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
+}
+
+/* Минутный прогноз */
+.minutely-bar {
+    margin-top: 8px;
+    padding: 6px 8px;
+    background: rgba(0, 100, 255, 0.08);
+    border: 1px solid rgba(0, 100, 255, 0.3);
+    border-radius: 4px;
+}
+.minutely-bar-label {
+    font-size: 10px;
+    color: #0099ff;
+    margin-bottom: 3px;
+}
+.minutely-bar-chart {
+    font-size: 18px;
+    letter-spacing: 2px;
+    color: #0099ff;
+    font-family: monospace;
+}
+
+/* Расчёт температуры поверхности */
+.temp-calc-hint {
+    cursor: help;
+    font-size: 11px;
+}
+.temp-calc-detail {
+    font-size: 10px;
+    color: #888;
+    margin-top: 4px;
+    padding: 3px 6px;
+    border-left: 2px solid #444;
+    font-style: italic;
+}
+
+/* Водный баланс испарения */
+.drying-water-balance {
+    margin-bottom: 8px;
+    padding: 6px 8px;
+    background: rgba(0, 180, 255, 0.06);
+    border: 1px solid rgba(0, 180, 255, 0.2);
+    border-radius: 4px;
+}
+
+/* Коэффициент сцепления */
+.friction-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #00cc00;
+    margin-bottom: 8px;
+    padding: 5px 8px;
+    background: rgba(0, 200, 0, 0.06);
+    border-left: 3px solid #00aa00;
+}
+.friction-dry {
+    color: #888;
+    font-size: 11px;
+}
+
+/* Таблица тормозных путей */
+.braking-table {
+    margin-top: 10px;
+    padding: 6px 8px;
+    background: rgba(255, 100, 0, 0.06);
+    border: 1px solid rgba(255, 100, 0, 0.2);
+    border-radius: 4px;
+}
+.braking-table-title {
+    font-size: 11px;
+    color: #ff8844;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+.braking-table .period-item span:first-child { color: #cc8844; }
+.braking-table .period-item span:last-child { color: #ffaa66; }
+
+/* Риск аквапланирования */
+.aquaplaning-risk {
+    margin-top: 10px;
+    padding: 8px;
+    border-radius: 4px;
+}
+.aquaplaning-risk.high { background: rgba(255, 50, 50, 0.12); border: 1px solid #ff4444; }
+.aquaplaning-risk.moderate { background: rgba(255, 170, 0, 0.1); border: 1px solid #ffaa00; }
+.aquaplaning-risk.low { background: rgba(0, 180, 0, 0.08); border: 1px solid #00aa00; }
+.aquaplaning-title {
+    font-size: 12px;
+    font-weight: bold;
+    color: #00ccff;
+    margin-bottom: 5px;
+}
+.aquaplaning-level {
+    margin-top: 5px;
+    font-size: 12px;
+    font-weight: bold;
+    padding: 3px 0;
+}
+.aquaplaning-level.high { color: #ff4444; }
+.aquaplaning-level.moderate { color: #ffaa00; }
+.aquaplaning-level.low { color: #00cc00; }
+
+/* Таблица прогноза состояния поверхности */
+.surface-forecast-table {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 6px;
+}
+.forecast-hour-row {
+    display: grid;
+    grid-template-columns: 100px 1fr 60px 50px;
+    gap: 6px;
+    font-size: 11px;
+    padding: 4px 6px;
+    background: rgba(0, 255, 0, 0.04);
+    border-bottom: 1px solid rgba(0, 255, 0, 0.08);
+    align-items: center;
+}
+.forecast-hour { color: #888; }
+.forecast-condition { color: #00cc00; font-weight: bold; }
+.forecast-rain { color: #0099ff; text-align: right; }
+.forecast-temp { color: #ffcc00; text-align: right; }
+
 /* Адаптивность */
 @media (max-width: 500px) {
     .impact-grid-detailed,
