@@ -3,7 +3,8 @@
 import { escapeHtml } from '../utils/helpers.js';
 import { markers } from '../../state.js';
 import { getWeatherIcon, getWeatherCondition, getWindDirection, getRoadTypeName, 
-         getSurfaceName, getObjectTypeName, getSeverityName, getSeverityIcon } from '../utils/formatters.js';
+         getSurfaceName, getObjectTypeName, getSeverityName, getSeverityIcon,
+         getQualityLabel, getQualityColorClass } from '../utils/formatters.js';
 import { getCurrentTimeForTimezone } from '../api/worldtime.js';
 
 export function createPopupContent(data) {
