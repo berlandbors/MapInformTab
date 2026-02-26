@@ -59,6 +59,36 @@ function getTrafficabilityLabel(level) {
     return { 'excellent': '✅ Проходимо', 'good': '🟢 Проходимо', 'fair': '🟡 Затруднено', 'poor': '🟠 Сильно затруднено', 'impassable': '🔴 Непроходимо' }[level] || 'Неизвестно';
 }
 
+// Определить текущее состояние поверхности на основе condition
+function getSurfaceConditionDisplay(condition) {
+    const conditionMap = {
+        // Сухие состояния
+        'dry': { icon: '☀️', text: 'СУХО', color: '#00aa00', severity: 'low' },
+        'mostly_dry': { icon: '🌤️', text: 'ПРЕИМУЩЕСТВЕННО СУХО', color: '#44cc00', severity: 'low' },
+
+        // Влажные состояния
+        'damp': { icon: '💧', text: 'ВЛАЖНО', color: '#88aa00', severity: 'moderate' },
+        'wet': { icon: '💦', text: 'МОКРО', color: '#ffaa00', severity: 'moderate' },
+        'very_wet': { icon: '🌧️', text: 'ОЧЕНЬ МОКРО', color: '#ff8800', severity: 'high' },
+
+        // Опасные состояния
+        'puddled': { icon: '🌊', text: 'ЛУЖИ', color: '#ff6600', severity: 'high' },
+        'flooded': { icon: '⚠️', text: 'ЗАТОПЛЕНИЕ', color: '#ff4444', severity: 'critical' },
+        'icy': { icon: '❄️', text: 'ГОЛОЛЁД', color: '#00ccff', severity: 'critical' },
+        'black_ice': { icon: '🧊', text: 'ЧЁРНЫЙ ЛЁД', color: '#0088ff', severity: 'critical' },
+        'snowy': { icon: '🌨️', text: 'СНЕГ', color: '#aaddff', severity: 'high' },
+        'slushy': { icon: '🌨️', text: 'СЛЯКОТЬ', color: '#8899aa', severity: 'high' },
+        'muddy': { icon: '🟤', text: 'ГРЯЗЬ', color: '#aa6600', severity: 'moderate' }
+    };
+
+    return conditionMap[condition] || { icon: '❓', text: condition?.toUpperCase() || 'НЕИЗВЕСТНО', color: '#888888', severity: 'low' };
+}
+
+function renderSurfaceCondition(condition) {
+    const cond = getSurfaceConditionDisplay(condition);
+    return `<span style="color: ${cond.color}; font-weight: bold; font-size: 1.1em; margin-left: 10px;">${cond.icon} ${cond.text}</span>`;
+}
+
 export function openModal(data) {
     const overlay = document.getElementById('modalOverlay');
     const title = document.getElementById('modalTitle');
@@ -292,8 +322,13 @@ export function openModal(data) {
         ${data.surfaceAnalysis ? `
         <div class="modal-section">
             <div class="modal-section-title">🌧️ ДЕТАЛЬНЫЙ АНАЛИЗ ПОВЕРХНОСТИ</div>
+
+            <!-- ДОРОГА -->
             <div class="surface-block">
-                <div class="surface-block-header">🛣️ Дорога (${data.surfaceAnalysis.road.condition})</div>
+                <div class="surface-block-header">
+                    🛣️ Дорога
+                    ${renderSurfaceCondition(data.surfaceAnalysis.road.condition)}
+                </div>
                 <div class="modal-row">
                     <span class="modal-label">Вероятность:</span>
                     <span class="modal-value">${data.surfaceAnalysis.road.probability}% (${data.surfaceAnalysis.road.confidence})</span>
@@ -307,8 +342,13 @@ export function openModal(data) {
                     <ul class="factor-list">${data.surfaceAnalysis.road.factors.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
                 </div>
             </div>
+
+            <!-- ТРОТУАР -->
             <div class="surface-block">
-                <div class="surface-block-header">🚶 Тротуар (${data.surfaceAnalysis.sidewalk.condition})</div>
+                <div class="surface-block-header">
+                    🚶 Тротуар
+                    ${renderSurfaceCondition(data.surfaceAnalysis.sidewalk.condition)}
+                </div>
                 <div class="modal-row">
                     <span class="modal-label">Вероятность:</span>
                     <span class="modal-value">${data.surfaceAnalysis.sidewalk.probability}%</span>
@@ -318,8 +358,13 @@ export function openModal(data) {
                     <span class="modal-value">${data.surfaceAnalysis.sidewalk.dryingTime}</span>
                 </div>
             </div>
+
+            <!-- ПОЧВА -->
             <div class="surface-block">
-                <div class="surface-block-header">🌱 Почва (${data.surfaceAnalysis.soil.condition})</div>
+                <div class="surface-block-header">
+                    🌱 Почва
+                    ${renderSurfaceCondition(data.surfaceAnalysis.soil.condition)}
+                </div>
                 <div class="modal-row">
                     <span class="modal-label">Тип почвы:</span>
                     <span class="modal-value">${data.surfaceAnalysis.soil.soilType}</span>
