@@ -2443,3 +2443,176 @@ body {
 .forecast-bar:hover {
     background: linear-gradient(to top, #00ffff, #00aaff);
 }
+
+/* ============================================================
+   ИНДИКАТОР ЗАГРУЗКИ С ПРОГРЕССОМ (LoadingIndicator)
+   ============================================================ */
+
+.li-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 99000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.li-overlay.li-visible {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.li-container {
+    background: #001100;
+    border: 2px solid #00ff00;
+    border-radius: 8px;
+    padding: 24px 28px;
+    min-width: 300px;
+    max-width: 380px;
+    font-family: 'Courier New', monospace;
+    box-shadow: 0 0 30px rgba(0, 255, 0, 0.4);
+}
+
+.li-title {
+    color: #00ff00;
+    font-size: 14px;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 16px;
+    letter-spacing: 1px;
+}
+
+.li-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.li-bar {
+    flex: 1;
+    height: 8px;
+    background: rgba(0, 255, 0, 0.15);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid rgba(0, 255, 0, 0.3);
+}
+
+.li-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #00aa00, #00ff00);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+.li-pct {
+    color: #00ff00;
+    font-size: 12px;
+    min-width: 32px;
+    text-align: right;
+}
+
+.li-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+}
+
+.li-step {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    color: #007700;
+    font-size: 12px;
+    transition: color 0.3s;
+}
+
+.li-step-icon {
+    font-size: 13px;
+    min-width: 18px;
+    text-align: center;
+}
+
+.li-step.li-step-done {
+    color: #00ff00;
+}
+
+.li-step.li-step-error {
+    color: #ff4444;
+}
+
+.li-eta {
+    text-align: center;
+    color: #007700;
+    font-size: 11px;
+}
+
+.li-eta-val {
+    color: #00ff00;
+}
+
+/* ============================================================
+   АНАЛИЗ ПОВЕРХНОСТИ — БЛОКИ
+   ============================================================ */
+
+.surface-block {
+    border: 1px solid rgba(0, 255, 0, 0.2);
+    border-radius: 5px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: rgba(0, 255, 0, 0.03);
+}
+
+.surface-block-header {
+    color: #00ff00;
+    font-size: 13px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid rgba(0, 255, 0, 0.15);
+}
+
+/* ============================================================
+   ОБЩИЕ ЭЛЕМЕНТЫ: ВЕРОЯТНОСТЬ, ФАКТОРЫ, РЕКОМЕНДАЦИИ
+   ============================================================ */
+
+.probability {
+    color: #00aaff;
+    font-size: 11px;
+    opacity: 0.85;
+}
+
+.factor-list {
+    margin: 4px 0 0 0;
+    padding-left: 18px;
+    list-style: none;
+    color: #00cc00;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.factor-list li::before {
+    content: '▸ ';
+    color: #00aa00;
+}
+
+.recommendation-box {
+    margin-top: 6px;
+    padding: 8px 12px;
+    background: rgba(0, 255, 0, 0.06);
+    border-left: 3px solid #00ff00;
+    border-radius: 4px;
+    color: #00ff00;
+    font-size: 12px;
+    line-height: 1.5;
+}
