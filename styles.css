@@ -2353,3 +2353,93 @@ body {
     font-size: 13px;
     font-weight: bold;
 }
+
+/* ==========================================
+   МЕТЕОРОЛОГИЧЕСКИЕ ПРЕДУПРЕЖДЕНИЯ
+   ========================================== */
+
+/* Алерты в popup */
+.popup-alerts {
+    background: rgba(255, 0, 0, 0.1);
+    border: 1px solid #ff0000;
+    margin-bottom: 10px;
+}
+
+.popup-alert {
+    padding: 8px;
+    margin: 5px 0;
+    border-left: 3px solid #ff0000;
+}
+
+.popup-alert.severity-critical {
+    border-left-color: #ff0000;
+    background: rgba(255, 0, 0, 0.15);
+}
+
+.popup-alert.severity-high {
+    border-left-color: #ff9900;
+    background: rgba(255, 153, 0, 0.15);
+}
+
+.popup-alert.severity-moderate {
+    border-left-color: #ffff00;
+    background: rgba(255, 255, 0, 0.1);
+}
+
+.alert-title {
+    font-weight: bold;
+    color: #ff0000;
+    font-size: 12px;
+}
+
+.alert-time {
+    font-size: 10px;
+    color: #00ff00;
+    margin-top: 3px;
+}
+
+/* ==========================================
+   КАЧЕСТВО ВОЗДУХА (AQI)
+   ========================================== */
+
+.aqi-1 { color: #00ff00; font-weight: bold; }
+.aqi-2 { color: #88ff00; font-weight: bold; }
+.aqi-3 { color: #ffff00; font-weight: bold; }
+.aqi-4 { color: #ff9900; font-weight: bold; }
+.aqi-5 { color: #ff0000; font-weight: bold; }
+
+/* ==========================================
+   МИНУТНЫЙ ПРОГНОЗ ОСАДКОВ
+   ========================================== */
+
+.minutely-forecast {
+    padding: 10px;
+}
+
+.forecast-summary {
+    font-size: 14px;
+    margin-bottom: 10px;
+    text-align: center;
+    color: #00ff00;
+}
+
+.forecast-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 60px;
+    border-bottom: 1px solid rgba(0, 255, 0, 0.3);
+    padding-bottom: 4px;
+}
+
+.forecast-bar {
+    flex: 1;
+    background: linear-gradient(to top, #00aaff, #0066ff);
+    min-height: 2px;
+    border-radius: 2px 2px 0 0;
+    transition: all 0.3s;
+}
+
+.forecast-bar:hover {
+    background: linear-gradient(to top, #00ffff, #00aaff);
+}
