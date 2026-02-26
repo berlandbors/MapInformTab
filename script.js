@@ -687,9 +687,9 @@ function openModal(data) {
                 ${data.minutelyForecast.some(m => m.precipitation > 0)
                     ? `<div class="forecast-summary">🌧️ Ожидаются осадки</div>
                        <div class="forecast-chart">
-                           ${data.minutelyForecast.map((m, i) => i % 5 === 0 ? `
+                           ${data.minutelyForecast.filter((m, i) => i % 5 === 0).map(m => `
                            <div class="forecast-bar" style="height: ${Math.min(m.precipitation * 10, 50)}px;" title="${m.time}: ${m.precipitation} мм/ч"></div>
-                           ` : '').join('')}
+                           `).join('')}
                        </div>`
                     : '<div class="forecast-summary">☀️ Осадков не ожидается в ближайший час</div>'}
             </div>
@@ -779,8 +779,8 @@ function openModal(data) {
             ${data.weatherAlerts && data.weatherAlerts.length > 0 ?
                 data.weatherAlerts.map(a => `
                 <div class="modal-row">
-                    <span class="modal-label">${a.icon} ${a.type}:</span>
-                    <span class="modal-value alert-${a.level}">${a.description}</span>
+                    <span class="modal-label">${a.icon ? a.icon + ' ' : ''}${a.event || a.type || 'Предупреждение'}:</span>
+                    <span class="modal-value alert-${a.severity || a.level || 'moderate'}">${a.description}</span>
                 </div>`).join('') :
                 `<div class="modal-row">
                     <span class="modal-label">Предупреждения:</span>
@@ -2193,7 +2193,7 @@ async function getAirQuality(lat, lng) {
         return {
             aqi,
             aqiText: aqiLabels[aqi] || 'Нет данных',
-            pm25: components.pm2_5?.toFixed(1) || 'Н/Д', // API uses pm2_5 (with underscore)
+            pm25: components.pm2_5?.toFixed(1) || 'Н/Д',
             pm10: components.pm10?.toFixed(1) || 'Н/Д',
             co: components.co?.toFixed(1) || 'Н/Д',
             no2: components.no2?.toFixed(1) || 'Н/Д',
