@@ -10,7 +10,7 @@ import { getMETARData, mergeWeatherData } from './modules/api/metar.js';
 import { getTimezoneData } from './modules/api/worldtime.js';
 
 // Analysis modules
-import { analyzeSurfaceWithProbability } from './modules/analysis/surface.js';
+import { analyzeSurfaceWithProbability, buildSurfaceCondition } from './modules/analysis/surface.js';
 import { estimateTrafficWithInduction } from './modules/analysis/traffic.js';
 import { applyMLCorrections, calculateConfidenceLevels, saveWeatherHistory } from './modules/analysis/weather.js';
 import { analyzePressure } from './modules/analysis/pressure.js';
@@ -186,6 +186,8 @@ async function scanLocation(lat, lng, isRescan = false) {
 
         // 8. Surface analysis
         const surfaceAnalysis = analyzeSurfaceWithProbability(weatherData, roadData, locationData);
+        const surfaceCondition = buildSurfaceCondition(weatherData, roadData, owmOnecall);
+        loader.updateProgress('surface', 'success');
 
         // 9. Traffic analysis
         const trafficAnalysis = estimateTrafficWithInduction(roadData, weatherData, locationData, new Date());
@@ -217,6 +219,7 @@ async function scanLocation(lat, lng, isRescan = false) {
             confidence,
             metarData,
             surfaceAnalysis,
+            surfaceCondition,
             trafficAnalysis,
             id: currentMarkerCount,
             scanTime: new Date().toLocaleString('ru-RU')
