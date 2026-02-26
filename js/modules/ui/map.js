@@ -1,7 +1,7 @@
 // js/modules/ui/map.js - Leaflet map management
 
 import { map, markers, isMobile, setMap, setMarkerCount } from '../../state.js';
-import { showLoading, showError } from './loading.js';
+import { showError } from './loading.js';
 import { clearLayers } from './layers.js';
 import { getCurrentTimeForTimezone } from '../api/worldtime.js';
 import { createPopupContent } from './popup.js';
@@ -83,7 +83,6 @@ export function getCurrentLocation(scanLocationFn) {
         showError('Геолокация не поддерживается браузером.');
         return;
     }
-    showLoading();
     navigator.geolocation.getCurrentPosition(
         async function(position) {
             const lat = position.coords.latitude;
