@@ -1987,7 +1987,7 @@ export function displayFullInfo(data) {
         </div>` : ''}
 
         <div class="info-section">
-            <button class="control-btn" onclick="openModalById(${markerIndex})" style="width: 100%; margin-top: 10px;">
+            <button class="control-btn" onclick="openModalById(${data.id})" style="width: 100%; margin-top: 10px;">
                 [ 📋 ОТКРЫТЬ ПОЛНУЮ ИНФОРМАЦИЮ ]
             </button>
         </div>
