@@ -1,7 +1,6 @@
 // js/modules/ui/popup.js - Marker popup content
 
 import { escapeHtml } from '../utils/helpers.js';
-import { markers } from '../../state.js';
 import { getWeatherIcon, getWeatherCondition, getWindDirection, getRoadTypeName, 
          getSurfaceName, getObjectTypeName, getSeverityName, getSeverityIcon,
          getQualityLabel, getQualityColorClass } from '../utils/formatters.js';
@@ -11,7 +10,6 @@ import { getAQICategory } from '../api/openmeteo-airquality.js';
 export function createPopupContent(data) {
     const weatherIcon = getWeatherIcon(data.weatherCode);
     const tempStatus = data.temp > 20 ? 'status-good' : data.temp > 0 ? 'status-warning' : 'status-bad';
-    const markerIndex = markers.length;
 
     return `
         <div class="popup-title">
@@ -197,7 +195,7 @@ export function createPopupContent(data) {
             ` : ''}
         </div>
 
-        <button class="popup-details-btn" onclick="openModalById(${markerIndex})">
+        <button class="popup-details-btn" onclick="openModalById(${data.id})">
             [ 📋 ПОЛНАЯ ИНФОРМАЦИЯ ]
         </button>
 
