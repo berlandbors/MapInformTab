@@ -306,6 +306,112 @@ function estimateSoilDryingTime(precip, temp, soilType) {
 }
 
 /**
+ * Calculate detailed drying analysis including temperature data
+ * @param {object} env - Environment factors
+ * @param {number} histPrecip - Historical precipitation (24h)
+ * @returns {object} Drying analysis data
+ */
+function calculateDryingAnalysis(env, histPrecip) {
+    const airTemp = env.temp;
+    const dewpoint = env.dewPoint;
+
+    // Расчёт температуры поверхности
+    // Летом/днём поверхность может быть на 5-10°C теплее воздуха
+    // Зимой/ночью - на 1-3°C холоднее
+    let surfaceTemp = airTemp;
+    let surfaceTempCalc = 'базовая температура воздуха';
+
+    if (env.isDay) {
+        if (airTemp > 20) {
+            // Жаркий день - асфальт нагревается сильно
+            const solarBonus = Math.min((airTemp - 20) * 0.5, 10);
+            surfaceTemp = airTemp + 5 + solarBonus;
+            surfaceTempCalc = `воздух +${airTemp}°C + дневной нагрев +${(5 + solarBonus).toFixed(1)}°C`;
+        } else if (airTemp > 10) {
+            // Умеренный день
+            surfaceTemp = airTemp + 3;
+            surfaceTempCalc = `воздух +${airTemp}°C + солнечный нагрев +3°C`;
+        } else if (airTemp > 0) {
+            // Прохладный день
+            surfaceTemp = airTemp + 1;
+            surfaceTempCalc = `воздух +${airTemp}°C + слабый нагрев +1°C`;
+        } else {
+            // Холодный день
+            surfaceTemp = airTemp - 1;
+            surfaceTempCalc = `воздух ${airTemp}°C - радиационное охлаждение -1°C`;
+        }
+    } else {
+        // Ночь - поверхность холоднее
+        if (airTemp > 15) {
+            surfaceTemp = airTemp - 2;
+            surfaceTempCalc = `воздух +${airTemp}°C - ночное охлаждение -2°C`;
+        } else if (airTemp > 0) {
+            surfaceTemp = airTemp - 3;
+            surfaceTempCalc = `воздух +${airTemp}°C - ночное охлаждение -3°C`;
+        } else {
+            surfaceTemp = airTemp - 2;
+            surfaceTempCalc = `воздух ${airTemp}°C - ночное охлаждение -2°C`;
+        }
+    }
+
+    // Округление
+    surfaceTemp = Math.round(surfaceTemp * 10) / 10;
+    const tempDiff = Math.round((surfaceTemp - dewpoint) * 10) / 10;
+
+    // Риски
+    const iceRisk = surfaceTemp < 0 && surfaceTemp < dewpoint;
+    const isAboveDewpoint = tempDiff > 2;
+
+    // Испарение (упрощённая формула)
+    let evaporationRate = 0;
+    if (airTemp > 0 && histPrecip > 0) {
+        // Базовая скорость зависит от разницы температур
+        const tempFactor = Math.max(0, (surfaceTemp - dewpoint) / 10);
+        const windFactor = env.windSpeed / 10;
+        const humidityFactor = (100 - env.humidity) / 100;
+        evaporationRate = tempFactor * windFactor * humidityFactor * 0.5;
+        evaporationRate = Math.round(evaporationRate * 100) / 100;
+    }
+
+    // Дренаж (упрощённо)
+    const drainageRate = histPrecip > 0 ? Math.min(histPrecip * 0.1, 1) : 0;
+
+    // Остаточная вода
+    const precipitation6h = histPrecip * 0.25; // ~25% от 24ч
+    const residualWater = Math.max(0, precipitation6h - evaporationRate - drainageRate);
+
+    // Время высыхания
+    let dryingHours = 0;
+    let dryingTime = null;
+    if (residualWater > 0 && evaporationRate > 0) {
+        dryingHours = Math.ceil(residualWater / evaporationRate);
+        const futureTime = new Date();
+        futureTime.setHours(futureTime.getHours() + dryingHours);
+        dryingTime = futureTime.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
+    }
+
+    return {
+        airTemp: Math.round(airTemp * 10) / 10,
+        surfaceTemp,
+        surfaceTempCalc,
+        dewpoint: Math.round(dewpoint * 10) / 10,
+        tempDiff,
+        iceRisk,
+        isAboveDewpoint,
+        precipitation6h: Math.round(precipitation6h * 10) / 10,
+        evaporationRate,
+        drainageRate: Math.round(drainageRate * 100) / 100,
+        residualWater: Math.round(residualWater * 10) / 10,
+        radiation: env.cloudCover < 30 ? 800 : env.cloudCover < 70 ? 400 : 100,
+        cloudCover: env.cloudCover,
+        windSpeed: env.windSpeed,
+        humidity: env.humidity,
+        dryingHours,
+        dryingTime
+    };
+}
+
+/**
  * Build detailed surface condition for UI display
  * @param {object} weatherData - Current weather data
  * @param {object} roadData - Road data from Overpass
@@ -314,6 +420,26 @@ function estimateSoilDryingTime(precip, temp, soilType) {
  */
 export function buildSurfaceCondition(weatherData, roadData, surfaceAnalysis) {
     const roadCond = surfaceAnalysis?.road?.condition || 'dry';
+
+    // Получить данные для анализа высыхания
+    const env = {
+        temp: weatherData.temp,
+        // Fallback: simplified Magnus formula approximation when dewPoint is unavailable
+        dewPoint: weatherData.dewPoint != null ? weatherData.dewPoint : (weatherData.temp - (100 - weatherData.humidity) / 5),
+        humidity: weatherData.humidity,
+        precipitation: weatherData.precipitation || 0,
+        rain: weatherData.rain || 0,
+        snowfall: weatherData.snowfall || 0,
+        windSpeed: weatherData.windSpeed,
+        windGusts: weatherData.windGusts || weatherData.windSpeed,
+        isDay: weatherData.isDay,
+        cloudCover: weatherData.cloudCover
+    };
+
+    const histPrecip = surfaceAnalysis?.histData?.last24h || 0;
+
+    // Рассчитать анализ высыхания
+    const dryingAnalysis = calculateDryingAnalysis(env, histPrecip);
 
     const conditionMap = {
         'dry': { icon: '☀️', name: 'Сухая дорога', severity: 'low' },
@@ -349,7 +475,8 @@ export function buildSurfaceCondition(weatherData, roadData, surfaceAnalysis) {
             wetDistance: Math.round(20 * (1 + brakeIncrease / 100))
         },
         recommendations,
-        forPedestrians
+        forPedestrians,
+        dryingAnalysis
     };
 }
 
