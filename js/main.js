@@ -169,6 +169,12 @@ async function scanLocation(lat, lng, isRescan = false) {
                 soilSaturation: historicalWetness?.soilSaturation || 'normal'
             }
         );
+
+        // Добавить histData в surfaceAnalysis для передачи в buildSurfaceCondition
+        surfaceAnalysis.histData = {
+            last24h: historicalPrecip?.last24h || 0
+        };
+
         const surfaceCondition = buildSurfaceCondition(weatherData, roadData, surfaceAnalysis);
 
         // 10. Traffic analysis
