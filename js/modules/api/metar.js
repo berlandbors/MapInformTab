@@ -7,6 +7,68 @@ function parseCloudCover(cover) {
     return cover ? mapping[cover] ?? null : null;
 }
 
+function decodeWeatherString(wxString) {
+    if (!wxString) return null;
+
+    const intensityMap = {
+        '-': 'слабый ',
+        '+': 'сильный ',
+        'VC': 'в окрестностях '
+    };
+
+    const descriptors = {
+        'MI': 'неплотный ',
+        'PR': 'частичный ',
+        'BC': 'клочковатый ',
+        'DR': 'низовая метель ',
+        'BL': 'метель ',
+        'SH': 'ливневый ',
+        'TS': 'грозовой ',
+        'FZ': 'замерзающий '
+    };
+
+    const weatherCodes = {
+        'RA': 'дождь',
+        'DZ': 'морось',
+        'SN': 'снег',
+        'SG': 'снежные зёрна',
+        'IC': 'ледяные кристаллы',
+        'PL': 'ледяная крупа',
+        'GR': 'град',
+        'GS': 'малый град',
+        'UP': 'неизвестные осадки',
+        'BR': 'дымка',
+        'FG': 'туман',
+        'FU': 'дым',
+        'VA': 'вулканический пепел',
+        'DU': 'пыль',
+        'SA': 'песок',
+        'HZ': 'мгла',
+        'PY': 'водяная пыль',
+        'PO': 'пыльные вихри',
+        'SQ': 'шквал',
+        'FC': 'воронка облака/торнадо',
+        'SS': 'песчаная буря',
+        'DS': 'пыльная буря'
+    };
+
+    let decoded = wxString;
+
+    for (const [code, translation] of Object.entries(intensityMap)) {
+        decoded = decoded.replaceAll(code, translation);
+    }
+
+    for (const [code, translation] of Object.entries(descriptors)) {
+        decoded = decoded.replaceAll(code, translation);
+    }
+
+    for (const [code, translation] of Object.entries(weatherCodes)) {
+        decoded = decoded.replaceAll(code, translation);
+    }
+
+    return decoded !== wxString ? decoded : null;
+}
+
 function parseMETAR(metar) {
     return {
         temp: metar.temp ?? null,
@@ -21,8 +83,29 @@ function parseMETAR(metar) {
         stationId: metar.icaoId,
         distance: Math.round(metar.distance),
         source: 'METAR',
-        reliability: 0.95
+        reliability: 0.95,
+        windGust: metar.wgst ? Math.round(metar.wgst * 0.514444) : null,
+        flightCategory: metar.fltcat ?? null,
+        vertVisibility: metar.vertVis ?? null,
+        cloudLayers: metar.clouds?.map(c => ({
+            cover: c.cover,
+            base_ft: c.base_ft_agl,
+            base_m: c.base_ft_agl ? Math.round(c.base_ft_agl * 0.3048) : null
+        })) ?? [],
+        rawText: metar.rawOb ?? null,
+        elevation: metar.elev ? Math.round(metar.elev) : null,
+        weatherDecoded: decodeWeatherString(metar.wxString)
     };
+}
+
+export function getFlightCategoryInfo(category) {
+    const categories = {
+        'VFR': { label: 'VFR (Отличная)', color: '#00ff00', icon: '🟢', description: 'Визуальные полёты' },
+        'MVFR': { label: 'MVFR (Умеренная)', color: '#0088ff', icon: '🔵', description: 'Маргинальные условия' },
+        'IFR': { label: 'IFR (Плохая)', color: '#ff8800', icon: '🟠', description: 'Приборные полёты' },
+        'LIFR': { label: 'LIFR (Очень плохая)', color: '#ff0000', icon: '🔴', description: 'Низкая видимость' }
+    };
+    return categories[category] || null;
 }
 
 export async function getMETARData(lat, lng) {
@@ -70,6 +153,13 @@ export function mergeWeatherData(openMeteo, metar) {
         metarStation: metar.stationId,
         metarDistance: metar.distance,
         metarTime: metar.obsTime,
-        dataSource: 'hybrid'
+        dataSource: 'hybrid',
+        windGust: metar.windGust,
+        flightCategory: metar.flightCategory,
+        vertVisibility: metar.vertVisibility,
+        cloudLayers: metar.cloudLayers,
+        metarRaw: metar.rawText,
+        metarElevation: metar.elevation,
+        weatherDecoded: metar.weatherDecoded
     };
 }

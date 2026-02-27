@@ -3097,3 +3097,91 @@ body {
     font-size: 9px;
     white-space: nowrap;
 }
+
+/* Категории полётов */
+.flight-category {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.flight-category.vfr {
+    background: rgba(0, 255, 0, 0.2);
+    border: 1px solid #00ff00;
+    color: #00ff00;
+}
+
+.flight-category.mvfr {
+    background: rgba(0, 136, 255, 0.2);
+    border: 1px solid #0088ff;
+    color: #0088ff;
+}
+
+.flight-category.ifr {
+    background: rgba(255, 136, 0, 0.2);
+    border: 1px solid #ff8800;
+    color: #ff8800;
+}
+
+.flight-category.lifr {
+    background: rgba(255, 0, 0, 0.2);
+    border: 1px solid #ff0000;
+    color: #ff0000;
+}
+
+/* Слои облачности */
+.cloud-layers {
+    margin-top: 8px;
+    padding-left: 10px;
+}
+
+.cloud-layer {
+    color: #00cccc;
+    font-size: 13px;
+    margin: 4px 0;
+    padding: 4px 8px;
+    background: rgba(0, 204, 204, 0.1);
+    border-left: 2px solid #00cccc;
+    border-radius: 3px;
+}
+
+/* Сырой METAR */
+.metar-raw-details {
+    margin-top: 8px;
+    cursor: pointer;
+}
+
+.metar-raw-details summary {
+    color: #00aaff;
+    cursor: pointer;
+    user-select: none;
+}
+
+.metar-raw-details summary:hover {
+    color: #00ddff;
+}
+
+.metar-raw-code {
+    display: block;
+    margin-top: 8px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid #00ff00;
+    border-radius: 4px;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+/* Улучшение существующего METAR badge */
+.metar-badge {
+    background: rgba(0, 150, 255, 0.1);
+    border-left: 3px solid #0088ff;
+    padding: 10px;
+    margin: 8px 0;
+    border-radius: 4px;
+}
