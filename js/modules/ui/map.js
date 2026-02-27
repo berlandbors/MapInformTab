@@ -41,7 +41,7 @@ export function initMap(scanLocationFn) {
             maxZoom: 19,
             attribution: '© CartoDB'
         }),
-        "Погода (Температура)": L.tileLayer('https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=YOUR_API_KEY', {
+        "Погода (Температура)": L.tileLayer('https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=452c27213f9904c2140f7b65897bfbef', {
             maxZoom: 19,
             opacity: 0.5
         })
