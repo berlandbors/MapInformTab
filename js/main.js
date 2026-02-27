@@ -1,14 +1,11 @@
 // js/main.js - Application entry point
 
 // API modules
-import { getCurrentWeather as owmCurrentWeather, getOneCallData, get5DayForecast, getAirPollution, getWeatherAlerts, getAirQuality, getMinutelyForecast } from './modules/api/openweather.js';
-import { getCompleteWeatherData, getOWMStatus } from './modules/api/openweathermap.js';
 import { getWeatherDataMultiPoint } from './modules/api/openmeteo.js';
 import { getHistoricalPrecipitation, getHistoricalWetness } from './modules/api/openmeteo-historical.js';
 import { getElevationAndSlope } from './modules/api/elevation.js';
 import { getLocationData } from './modules/api/nominatim.js';
 import { getRoadData, getPedestrianData, getShadingData, getCoverageData } from './modules/api/overpass.js';
-import { getRealTimeTraffic, getTrafficIncidents } from './modules/api/traffic.js';
 import { getSeismicData } from './modules/api/usgs.js';
 import { getMETARData, mergeWeatherData } from './modules/api/metar.js';
 import { getTimezoneData } from './modules/api/worldtime.js';
@@ -90,56 +87,12 @@ async function scanLocation(lat, lng, isRescan = false) {
         // 1. Multi-point weather data (Open-Meteo as base)
         let weatherData = await getWeatherDataMultiPoint(lat, lng);
 
-        // 2. OpenWeatherMap data
-        const [owmCurrent, owmOnecall, owmForecast, owmAirPollution] = await Promise.all([
-            owmCurrentWeather(lat, lng).catch(err => {
-                console.error('❌ owmCurrentWeather не удалось:', err.message);
-                return null;
-            }),
-            getOneCallData(lat, lng).catch(err => {
-                console.error('❌ getOneCallData не удалось:', err.message);
-                return null;
-            }),
-            get5DayForecast(lat, lng).catch(err => {
-                console.error('❌ get5DayForecast не удалось:', err.message);
-                return null;
-            }),
-            getAirPollution(lat, lng).catch(err => {
-                console.error('❌ getAirPollution не удалось:', err.message);
-                return null;
-            })
-        ]);
-
-        if (!owmCurrent) {
-            console.warn('⚠️ OpenWeatherMap недоступен, используются только данные Open-Meteo');
-        }
-
-        if (owmCurrent) {
-            weatherData = {
-                ...weatherData,
-                temp: Math.round(owmCurrent.temp),
-                feelsLike: Math.round(owmCurrent.feelsLike),
-                humidity: owmCurrent.humidity,
-                windSpeed: owmCurrent.windSpeed,
-                pressure: owmCurrent.pressure,
-                cloudCover: owmCurrent.cloudCover,
-                rain1h: owmCurrent.rain1h,
-                rain3h: owmCurrent.rain3h,
-                snow1h: owmCurrent.snow1h,
-                snow3h: owmCurrent.snow3h,
-                sunrise: owmCurrent.sunrise,
-                sunset: owmCurrent.sunset,
-                weatherDescription: owmCurrent.weatherDescription,
-                owmWeatherCode: owmCurrent.weatherCode
-            };
-        }
-
-        // 3. METAR data
+        // 2. METAR data
         const metarData = await getMETARData(lat, lng);
         weatherData = mergeWeatherData(weatherData, metarData);
 
-        // 4. Other data sources in parallel
-        const [locationData, roadData, pedestrianData, seismicData, timezoneData, weatherAlertsData, minutelyData] = await Promise.all([
+        // 3. Other data sources in parallel
+        const [locationData, roadData, pedestrianData, seismicData, timezoneData] = await Promise.all([
             getLocationData(lat, lng).catch(err => {
                 console.error('❌ getLocationData не удалось:', err.message);
                 return { road: 'Н/Д', city: 'Н/Д', country: 'Н/Д', district: 'Н/Д', state: 'Н/Д', displayName: 'Н/Д', postcode: null, houseNumber: null, objectType: null, objectName: null };
@@ -159,28 +112,8 @@ async function scanLocation(lat, lng, isRescan = false) {
             getTimezoneData(lat, lng).catch(err => {
                 console.error('❌ getTimezoneData не удалось:', err.message);
                 return { timezone: 'Н/Д', utcOffset: 'Н/Д', isDST: false, usesDST: false, winterOffset: null, summerOffset: null, currentSeason: 'winter', dstStart: null };
-            }),
-            getWeatherAlerts(lat, lng).catch(err => {
-                console.error('❌ getWeatherAlerts не удалось:', err.message);
-                return { weatherAlerts: [] };
-            }),
-            getMinutelyForecast(lat, lng).catch(err => {
-                console.error('❌ getMinutelyForecast не удалось:', err.message);
-                return { minutelyForecast: [] };
             })
         ]);
-
-        const airQualityData = owmAirPollution ? {
-            aqi: owmAirPollution.aqi,
-            aqiText: owmAirPollution.aqiText,
-            pm25: owmAirPollution.pm2_5,
-            pm10: owmAirPollution.pm10,
-            co: owmAirPollution.co,
-            no2: owmAirPollution.no2,
-            o3: owmAirPollution.o3,
-            so2: owmAirPollution.so2,
-            nh3: owmAirPollution.nh3
-        } : null;
 
         // 5. ML corrections
         weatherData = applyMLCorrections(weatherData, locationData, timezoneData);
@@ -192,14 +125,12 @@ async function scanLocation(lat, lng, isRescan = false) {
         saveWeatherHistory(weatherData);
 
         // 8. Real-data enrichment (parallel, with graceful degradation)
-        const [historicalPrecip, historicalWetness, elevationData, shadingRaw, hasRoof, realTrafficFlow, realIncidents] = await Promise.all([
+        const [historicalPrecip, historicalWetness, elevationData, shadingRaw, hasRoof] = await Promise.all([
             getHistoricalPrecipitation(lat, lng).catch(() => null),
             getHistoricalWetness(lat, lng).catch(() => null),
             getElevationAndSlope(lat, lng).catch(() => null),
             getShadingData(lat, lng).catch(() => null),
-            getCoverageData(lat, lng).catch(() => false),
-            getRealTimeTraffic(lat, lng).catch(() => null),
-            getTrafficIncidents(lat, lng).catch(() => null)
+            getCoverageData(lat, lng).catch(() => false)
         ]);
 
         // Compute dynamic drainage using real data
@@ -224,11 +155,10 @@ async function scanLocation(lat, lng, isRescan = false) {
 
         // 9. Surface analysis
         const surfaceAnalysis = analyzeSurfaceWithProbability(weatherData, roadData, locationData, realData);
-        const surfaceCondition = buildSurfaceCondition(weatherData, roadData, owmOnecall, realData);
+        const surfaceCondition = buildSurfaceCondition(weatherData, roadData, null, realData);
 
         // 10. Traffic analysis
-        const realTrafficData = (realTrafficFlow || realIncidents) ? { flow: realTrafficFlow, incidents: realIncidents } : null;
-        const trafficAnalysis = estimateTrafficWithInduction(roadData, weatherData, locationData, new Date(), realTrafficData);
+        const trafficAnalysis = estimateTrafficWithInduction(roadData, weatherData, locationData, new Date(), null);
 
         const astronomyData = getAstronomyData(lat, lng, weatherData.timezone);
         const alertsData = getLocalWeatherAlerts(weatherData.weatherCode, weatherData.precipProbability);
@@ -244,24 +174,12 @@ async function scanLocation(lat, lng, isRescan = false) {
             ...astronomyData,
             ...alertsData,
             ...timezoneData,
-            ...(airQualityData || {}),
-            ...(weatherAlertsData || {}),
-            ...minutelyData,
-            owmCurrent,
-            owmOnecall,
-            owmForecast,
-            minutelyForecast: owmOnecall?.minutely || [],
-            hourlyForecast: owmOnecall?.hourly || [],
-            dailyForecast: owmOnecall?.daily || [],
-            weatherAlerts: [...(owmOnecall?.alerts || []), ...(weatherAlertsData?.weatherAlerts || [])],
             confidence,
             metarData,
             surfaceAnalysis,
             surfaceCondition,
             trafficAnalysis,
             realData,
-            airQuality: airQualityData,
-            owmStatus: getOWMStatus(),
             id: currentMarkerCount,
             scanTime: new Date().toLocaleString('ru-RU')
         };

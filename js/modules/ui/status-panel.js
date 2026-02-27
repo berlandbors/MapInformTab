@@ -1,7 +1,5 @@
 // js/modules/ui/status-panel.js - API status panel UI
 
-import { getOWMStatus } from '../api/openweathermap.js';
-
 const CONTAINER_ID = 'apiStatusContainer';
 
 /**
@@ -10,34 +8,7 @@ const CONTAINER_ID = 'apiStatusContainer';
 export function updateAPIStatus() {
     const container = document.getElementById(CONTAINER_ID);
     if (!container) return;
-
-    const status = getOWMStatus();
-    const remainingColor = status.oneCallRemaining > 100 ? 'status-good' : 'status-warning';
-
-    container.innerHTML = `
-        <div class="api-status-panel">
-            <div class="status-item">
-                <span class="status-label">One Call API:</span>
-                <span class="status-value ${status.oneCallEnabled ? 'status-active' : 'status-disabled'}">
-                    ${status.oneCallEnabled ? 'Включён' : 'Отключён'}
-                </span>
-            </div>
-            ${status.oneCallEnabled ? `
-            <div class="status-item">
-                <span class="status-label">Осталось запросов:</span>
-                <span class="status-value ${remainingColor}">
-                    ${status.oneCallRemaining} / ${status.oneCallLimit}
-                </span>
-            </div>
-            ` : ''}
-            <div class="status-item">
-                <span class="status-label">Кэш:</span>
-                <span class="status-value ${status.cacheEnabled ? 'status-active' : 'status-disabled'}">
-                    ${status.cacheEnabled ? 'Включён' : 'Отключён'}
-                </span>
-            </div>
-        </div>
-    `;
+    container.innerHTML = '';
 }
 
 /**
