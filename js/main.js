@@ -119,13 +119,34 @@ async function scanLocation(lat, lng, isRescan = false) {
         // 2. METAR data
         updateLoadingProgress(2);
         const metarData = await getMETARData(lat, lng);
+
+        if (metarData) {
+            console.log(`✈️ METAR получен от аэропорта ${metarData.stationId} (${Math.round(metarData.distance)} км)`);
+            console.log(`   Данные:`, {
+                temp: metarData.temp,
+                windSpeed: metarData.windSpeed,
+                windGust: metarData.windGust,
+                flightCategory: metarData.flightCategory,
+                cloudLayers: metarData.cloudLayers?.length || 0
+            });
+        } else {
+            console.log(`⚠️ METAR недоступен (аэропорт >100 км или ошибка API)`);
+        }
+
         weatherData = mergeWeatherData(weatherData, metarData);
 
-        // Отладка METAR данных
         if (weatherData.metarStation) {
-            console.log(`✈️ METAR данные получены от ${weatherData.metarStation} (${weatherData.metarDistance} км)`);
+            console.log(`✅ METAR объединён с weatherData. Станция: ${weatherData.metarStation}`);
+            console.log(`   Поля в weatherData:`, {
+                metarStation: weatherData.metarStation,
+                metarDistance: weatherData.metarDistance,
+                flightCategory: weatherData.flightCategory,
+                windGust: weatherData.windGust,
+                cloudLayers: weatherData.cloudLayers?.length || 0,
+                metarRaw: weatherData.metarRaw ? 'ЕСТЬ' : 'НЕТ'
+            });
         } else {
-            console.log('⚠️ METAR данные недоступны (аэропорт >100 км или ошибка API)');
+            console.log(`ℹ️ weatherData не содержит METAR (работаем только с Open-Meteo)`);
         }
 
         // 3. Other data sources in parallel
@@ -262,13 +283,17 @@ async function scanLocation(lat, lng, isRescan = false) {
         };
 
         // Итоговая проверка METAR данных
-        if (fullData.metarStation) {
-            console.log(`📊 fullData содержит METAR от ${fullData.metarStation}`);
-            console.log(`   - Категория полётов: ${fullData.flightCategory || 'N/A'}`);
-            console.log(`   - Порывы ветра: ${fullData.windGust || 'N/A'} м/с`);
-            console.log(`   - Слои облаков: ${fullData.cloudLayers?.length || 0}`);
-        } else {
-            console.log('ℹ️ fullData не содержит METAR (аэропорт недоступен)');
+        console.log(`📊 fullData создан. Проверка METAR полей:`);
+        console.log(`   metarStation: ${fullData.metarStation || 'НЕТ'}`);
+        console.log(`   flightCategory: ${fullData.flightCategory || 'НЕТ'}`);
+        console.log(`   windGust: ${fullData.windGust || 'НЕТ'}`);
+        console.log(`   cloudLayers: ${fullData.cloudLayers?.length || 0}`);
+        console.log(`   metarRaw: ${fullData.metarRaw ? 'ЕСТЬ' : 'НЕТ'}`);
+
+        if (!fullData.metarStation && metarData) {
+            console.error(`❌ КРИТИЧЕСКАЯ ОШИБКА: metarData существует, но fullData.metarStation = null!`);
+            console.error(`   metarData:`, metarData);
+            console.error(`   weatherData.metarStation:`, weatherData.metarStation);
         }
 
         // Quality assessment
