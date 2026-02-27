@@ -161,8 +161,15 @@ async function scanLocation(lat, lng, isRescan = false) {
         };
 
         // 9. Surface analysis
-        const surfaceAnalysis = analyzeSurfaceWithProbability(weatherData, roadData, locationData, realData);
-        const surfaceCondition = buildSurfaceCondition(weatherData, roadData, null, realData);
+        const surfaceAnalysis = analyzeSurfaceWithProbability(
+            weatherData,
+            roadData,
+            {
+                last24h: historicalPrecip?.last24h || 0,
+                soilSaturation: historicalWetness?.soilSaturation || 'normal'
+            }
+        );
+        const surfaceCondition = buildSurfaceCondition(weatherData, roadData, surfaceAnalysis);
 
         // 10. Traffic analysis
         const trafficAnalysis = estimateTrafficWithInduction(roadData, weatherData, locationData, new Date(), null);

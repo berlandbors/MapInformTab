@@ -473,16 +473,27 @@ export function openModal(data) {
                 </div>
                 <div class="modal-row">
                     <span class="modal-label">Вероятность:</span>
-                    <span class="modal-value">${data.surfaceAnalysis.road.probability}% (${data.surfaceAnalysis.road.confidence})</span>
+                    <span class="modal-value">${data.surfaceAnalysis.road.probability}%</span>
                 </div>
                 <div class="modal-row">
-                    <span class="modal-label">Время до высыхания:</span>
+                    <span class="modal-label">Уверенность:</span>
+                    <span class="modal-value confidence-${data.surfaceAnalysis.road.confidence}">
+                        ${data.surfaceAnalysis.road.confidence === 'high' ? '🟢 Высокая' :
+                          data.surfaceAnalysis.road.confidence === 'medium' ? '🟡 Средняя' : '🔴 Низкая'}
+                    </span>
+                </div>
+                ${data.surfaceAnalysis.road.dryingTime && data.surfaceAnalysis.road.dryingTime !== 'Н/Д' ? `
+                <div class="modal-row">
+                    <span class="modal-label">⏱️ Время до высыхания:</span>
                     <span class="modal-value">${data.surfaceAnalysis.road.dryingTime}</span>
                 </div>
+                ` : ''}
+                ${data.surfaceAnalysis.road.factors && data.surfaceAnalysis.road.factors.length > 0 ? `
                 <div class="modal-row">
                     <span class="modal-label">Факторы:</span>
                     <ul class="factor-list">${data.surfaceAnalysis.road.factors.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
                 </div>
+                ` : ''}
             </div>
 
             <!-- ТРОТУАР -->
@@ -495,10 +506,18 @@ export function openModal(data) {
                     <span class="modal-label">Вероятность:</span>
                     <span class="modal-value">${data.surfaceAnalysis.sidewalk.probability}%</span>
                 </div>
+                ${data.surfaceAnalysis.sidewalk.dryingTime && data.surfaceAnalysis.sidewalk.dryingTime !== 'Н/Д' ? `
                 <div class="modal-row">
-                    <span class="modal-label">Время до высыхания:</span>
+                    <span class="modal-label">⏱️ Время до высыхания:</span>
                     <span class="modal-value">${data.surfaceAnalysis.sidewalk.dryingTime}</span>
                 </div>
+                ` : ''}
+                ${data.surfaceAnalysis.sidewalk.factors && data.surfaceAnalysis.sidewalk.factors.length > 0 ? `
+                <div class="modal-row">
+                    <span class="modal-label">Факторы:</span>
+                    <ul class="factor-list">${data.surfaceAnalysis.sidewalk.factors.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
+                </div>
+                ` : ''}
             </div>
 
             <!-- ПОЧВА -->
@@ -509,12 +528,28 @@ export function openModal(data) {
                 </div>
                 <div class="modal-row">
                     <span class="modal-label">Тип почвы:</span>
-                    <span class="modal-value">${data.surfaceAnalysis.soil.soilType}</span>
+                    <span class="modal-value">${
+                        data.surfaceAnalysis.soil.soilType === 'clay' ? '🟤 Глинистая' :
+                        data.surfaceAnalysis.soil.soilType === 'sandy' ? '🟡 Песчаная' :
+                        '🟢 Смешанная'
+                    }</span>
                 </div>
                 <div class="modal-row">
-                    <span class="modal-label">Скорость дренажа:</span>
-                    <span class="modal-value">${data.surfaceAnalysis.soil.drainageRate}</span>
+                    <span class="modal-label">Вероятность:</span>
+                    <span class="modal-value">${data.surfaceAnalysis.soil.probability}%</span>
                 </div>
+                ${data.surfaceAnalysis.soil.dryingTime && data.surfaceAnalysis.soil.dryingTime !== 'Н/Д' ? `
+                <div class="modal-row">
+                    <span class="modal-label">⏱️ Время высыхания:</span>
+                    <span class="modal-value">${data.surfaceAnalysis.soil.dryingTime}</span>
+                </div>
+                ` : ''}
+                ${data.surfaceAnalysis.soil.factors && data.surfaceAnalysis.soil.factors.length > 0 ? `
+                <div class="modal-row">
+                    <span class="modal-label">Факторы:</span>
+                    <ul class="factor-list">${data.surfaceAnalysis.soil.factors.map(f => `<li>${escapeHtml(f)}</li>`).join('')}</ul>
+                </div>
+                ` : ''}
             </div>
         </div>
         ` : ''}
