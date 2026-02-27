@@ -2790,6 +2790,22 @@ body {
     line-height: 1.5;
 }
 
+/* Confidence text colors */
+.confidence-high {
+    color: #00ff00;
+    font-weight: bold;
+}
+
+.confidence-medium {
+    color: #ffaa00;
+    font-weight: bold;
+}
+
+.confidence-low {
+    color: #ff4444;
+    font-weight: bold;
+}
+
 /* ============================================================
    API STATUS PANEL
    ============================================================ */
