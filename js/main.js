@@ -172,7 +172,11 @@ async function scanLocation(lat, lng, isRescan = false) {
 
         // Добавить histData в surfaceAnalysis для передачи в buildSurfaceCondition
         surfaceAnalysis.histData = {
-            last24h: historicalPrecip?.last24h || 0
+            last1h: historicalPrecip?.last1h || 0,
+            last3h: historicalPrecip?.last3h || 0,
+            last6h: historicalPrecip?.last6h || 0,
+            last24h: historicalPrecip?.last24h || 0,
+            hourlyData: historicalPrecip?.hourlyData || null
         };
 
         const surfaceCondition = buildSurfaceCondition(weatherData, roadData, surfaceAnalysis);
