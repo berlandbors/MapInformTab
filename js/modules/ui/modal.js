@@ -156,6 +156,53 @@ export function openModal(data) {
                 <span class="modal-label">Полный адрес:</span>
                 <span class="modal-value">${data.displayName}</span>
             </div>
+            ${data.class ? `
+            <div class="modal-row">
+                <span class="modal-label">🏷️ Класс объекта:</span>
+                <span class="modal-value">${getClassLabel(data.class)}</span>
+            </div>` : ''}
+            ${data.category ? `
+            <div class="modal-row">
+                <span class="modal-label">📂 Категория:</span>
+                <span class="modal-value">${getCategoryLabel(data.category)}</span>
+            </div>` : ''}
+            ${data.importance > 0 ? `
+            <div class="modal-row">
+                <span class="modal-label">⭐ Важность места:</span>
+                <span class="modal-value">
+                    <span class="importance-badge ${getImportanceLevel(data.importance)}">
+                        ${getImportanceIcon(data.importance)} ${getImportanceText(data.importance)}
+                    </span>
+                </span>
+            </div>` : ''}
+            ${data.areaSize ? `
+            <div class="modal-row">
+                <span class="modal-label">📐 Площадь объекта:</span>
+                <span class="modal-value">${formatArea(data.areaSize)}</span>
+            </div>` : ''}
+            ${data.osmUrl ? `
+            <div class="modal-row">
+                <span class="modal-label">🗺️ OpenStreetMap:</span>
+                <span class="modal-value">
+                    <a href="${data.osmUrl}" target="_blank" rel="noopener noreferrer" class="osm-link">
+                        Открыть в OSM ↗
+                    </a>
+                </span>
+            </div>` : ''}
+            ${Object.keys(data.extraTags || {}).length > 0 ? `
+            <div class="modal-row">
+                <details class="extra-tags-details">
+                    <summary class="modal-label">🏷️ Дополнительные теги OSM</summary>
+                    <div class="extra-tags-content">
+                        ${Object.entries(data.extraTags).map(([key, value]) => `
+                            <div class="tag-item">
+                                <span class="tag-key">${escapeHtml(key)}:</span>
+                                <span class="tag-value">${escapeHtml(value)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </details>
+            </div>` : ''}
         </div>
 
         ${data.weatherAlerts && data.weatherAlerts.length > 0 ? `
@@ -1909,4 +1956,67 @@ function getCloudCoverLabel(cover) {
         'OVC': 'Сплошная облачность'
     };
     return labels[cover] || cover;
+}
+
+// Хелперы для классификации OSM
+function getClassLabel(className) {
+    const labels = {
+        'highway': 'Дорога',
+        'building': 'Здание',
+        'natural': 'Природный объект',
+        'amenity': 'Общественное место',
+        'leisure': 'Место отдыха',
+        'shop': 'Магазин',
+        'tourism': 'Туристический объект',
+        'waterway': 'Водный путь',
+        'railway': 'Железная дорога',
+        'aeroway': 'Авиационный объект'
+    };
+    return labels[className] || className;
+}
+
+function getCategoryLabel(category) {
+    const labels = {
+        'residential': 'Жилая зона',
+        'commercial': 'Коммерческая зона',
+        'industrial': 'Промышленная зона',
+        'park': 'Парк',
+        'forest': 'Лес',
+        'water': 'Водоём',
+        'restaurant': 'Ресторан',
+        'cafe': 'Кафе',
+        'school': 'Школа',
+        'hospital': 'Больница'
+    };
+    return labels[category] || category;
+}
+
+function getImportanceLevel(importance) {
+    if (importance >= 0.8) return 'very-high';
+    if (importance >= 0.6) return 'high';
+    if (importance >= 0.4) return 'medium';
+    if (importance >= 0.2) return 'low';
+    return 'very-low';
+}
+
+function getImportanceIcon(importance) {
+    if (importance >= 0.8) return '⭐⭐⭐';
+    if (importance >= 0.6) return '⭐⭐';
+    if (importance >= 0.4) return '⭐';
+    return '◾';
+}
+
+function getImportanceText(importance) {
+    if (importance >= 0.8) return 'Очень важное место';
+    if (importance >= 0.6) return 'Важное место';
+    if (importance >= 0.4) return 'Среднее значение';
+    if (importance >= 0.2) return 'Локальное значение';
+    return 'Малозначимое';
+}
+
+function formatArea(area) {
+    if (area < 1) return `${Math.round(area * 10000)} см²`;
+    if (area < 10000) return `${Math.round(area)} м²`;
+    if (area < 1000000) return `${(area / 10000).toFixed(2)} га`;
+    return `${(area / 1000000).toFixed(2)} км²`;
 }

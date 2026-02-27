@@ -3,6 +3,7 @@
 import { escapeHtml } from '../utils/helpers.js';
 import { searchTimeout, setSearchTimeout } from '../../state.js';
 import { map } from '../../state.js';
+import { formatImportance } from '../api/nominatim.js';
 
 async function searchLocation(query, scanLocationFn) {
     if (!query || query.length < 2) {
@@ -10,10 +11,20 @@ async function searchLocation(query, scanLocationFn) {
         return;
     }
     try {
-        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5`;
-        const response = await fetch(url, { headers: { 'Accept-Language': 'ru', 'User-Agent': 'MapInformTab/1.0' } });
+        // ОБНОВЛЁННЫЙ URL с дополнительными параметрами
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=10&dedupe=1&extratags=1`;
+        const response = await fetch(url, {
+            headers: {
+                'Accept-Language': 'ru',
+                'User-Agent': 'MapInformTab/2.0'
+            }
+        });
         const results = await response.json();
-        displaySearchResults(results, scanLocationFn);
+
+        // НОВОЕ: Сортировка по важности
+        const sortedResults = results.sort((a, b) => (b.importance || 0) - (a.importance || 0));
+
+        displaySearchResults(sortedResults, scanLocationFn);
     } catch (error) {
         console.error('Ошибка поиска:', error);
         clearSearchResults();
@@ -28,10 +39,22 @@ function displaySearchResults(results, scanLocationFn) {
         container.style.display = 'block';
         return;
     }
+
+    // НОВОЕ: Улучшенное отображение с иконками и важностью
     container.innerHTML = results.map(r => {
         const safe = escapeHtml(r.display_name);
-        return `<div class="search-result-item" data-lat="${parseFloat(r.lat)}" data-lng="${parseFloat(r.lon)}" data-name="${safe}">
-            ${safe}
+        const importance = formatImportance(r.importance || 0);
+        const typeIcon = getTypeIcon(r.type, r.class);
+
+        return `<div class="search-result-item" data-lat="${parseFloat(r.lat)}" data-lng="${parseFloat(r.lon)}" data-name="${safe}" data-importance="${r.importance || 0}">
+            <span class="search-result-icon">${typeIcon}</span>
+            <div class="search-result-content">
+                <div class="search-result-name">${safe}</div>
+                <div class="search-result-meta">
+                    <span class="search-result-type">${getTypeLabel(r.type, r.class)}</span>
+                    <span class="search-result-importance">${importance.icon} ${importance.label}</span>
+                </div>
+            </div>
         </div>`;
     }).join('');
     container.style.display = 'block';
@@ -44,6 +67,78 @@ function displaySearchResults(results, scanLocationFn) {
             selectSearchResult(lat, lng, el, scanLocationFn);
         });
     });
+}
+
+// НОВАЯ ФУНКЦИЯ: Иконки для типов объектов
+function getTypeIcon(type, className) {
+    const icons = {
+        'city': '🏙️',
+        'town': '🏘️',
+        'village': '🏡',
+        'building': '🏢',
+        'residential': '🏠',
+        'commercial': '🏪',
+        'park': '🌳',
+        'natural': '🌲',
+        'water': '💧',
+        'lake': '🌊',
+        'river': '〰️',
+        'road': '🛣️',
+        'highway': '🛣️',
+        'railway': '🚂',
+        'airport': '✈️',
+        'station': '🚉',
+        'restaurant': '🍽️',
+        'cafe': '☕',
+        'school': '🏫',
+        'hospital': '🏥',
+        'pharmacy': '💊',
+        'bank': '🏦',
+        'shop': '🛒',
+        'mall': '🏬',
+        'hotel': '🏨',
+        'museum': '🏛️',
+        'theatre': '🎭',
+        'cinema': '🎬',
+        'stadium': '🏟️',
+        'beach': '🏖️'
+    };
+
+    return icons[type] || icons[className] || '📍';
+}
+
+// НОВАЯ ФУНКЦИЯ: Читаемые названия типов
+function getTypeLabel(type, className) {
+    const labels = {
+        'city': 'Город',
+        'town': 'Город',
+        'village': 'Деревня',
+        'building': 'Здание',
+        'residential': 'Жилой район',
+        'commercial': 'Коммерческая зона',
+        'park': 'Парк',
+        'natural': 'Природная зона',
+        'water': 'Водоём',
+        'lake': 'Озеро',
+        'river': 'Река',
+        'road': 'Дорога',
+        'highway': 'Шоссе',
+        'railway': 'Железная дорога',
+        'airport': 'Аэропорт',
+        'station': 'Станция',
+        'restaurant': 'Ресторан',
+        'cafe': 'Кафе',
+        'school': 'Школа',
+        'hospital': 'Больница',
+        'pharmacy': 'Аптека',
+        'bank': 'Банк',
+        'shop': 'Магазин',
+        'mall': 'Торговый центр',
+        'hotel': 'Отель',
+        'museum': 'Музей'
+    };
+
+    return labels[type] || labels[className] || 'Место';
 }
 
 export function clearSearchResults() {
