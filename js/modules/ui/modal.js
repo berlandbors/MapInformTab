@@ -103,13 +103,18 @@ function renderSurfaceCondition(condition) {
 
 export function openModal(data) {
     // Отладочная информация
-    console.log('🔍 Открытие модального окна. METAR данные:', {
-        metarStation: data.metarStation || 'НЕТ',
-        flightCategory: data.flightCategory || 'НЕТ',
-        windGust: data.windGust || 'НЕТ',
-        cloudLayers: data.cloudLayers?.length || 0,
-        weatherDecoded: data.weatherDecoded || 'НЕТ'
-    });
+    console.log(`🔍 openModal вызван. Проверка METAR данных:`);
+    console.log(`   metarStation: ${data.metarStation || 'НЕТ'}`);
+    console.log(`   flightCategory: ${data.flightCategory || 'НЕТ'}`);
+    console.log(`   windGust: ${data.windGust || 'НЕТ'}`);
+    console.log(`   cloudLayers: ${data.cloudLayers?.length || 0}`);
+    console.log(`   metarRaw: ${data.metarRaw ? 'ЕСТЬ' : 'НЕТ'}`);
+
+    if (data.metarStation) {
+        console.log(`✅ METAR данные ПРИСУТСТВУЮТ, секция должна отобразиться`);
+    } else {
+        console.log(`⚠️ METAR данные ОТСУТСТВУЮТ, секция НЕ отобразится`);
+    }
 
     const overlay = document.getElementById('modalOverlay');
     const title = document.getElementById('modalTitle');
@@ -971,17 +976,26 @@ export function closeModal(event) {
 }
 
 export function openModalById(markerId) {
-    console.log(`🔍 Поиск маркера с id=${markerId}, всего маркеров: ${markers.length}`);
+    console.log(`🔍 openModalById вызван с id=${markerId}, всего маркеров: ${markers.length}`);
 
     // Поиск маркера по data.id, а не по индексу массива
     const marker = markers.find(m => m.data && m.data.id === markerId);
 
     if (marker && marker.data) {
-        console.log(`✅ Маркер найден, открываем модальное окно`);
+        console.log(`✅ Маркер с id=${markerId} найден, открываем модальное окно`);
+        console.log(`📊 METAR данные маркера:`, {
+            metarStation: marker.data.metarStation || 'НЕТ',
+            flightCategory: marker.data.flightCategory || 'НЕТ',
+            windGust: marker.data.windGust || 'НЕТ'
+        });
         openModal(marker.data);
     } else {
-        console.error(`❌ Маркер с id=${markerId} не найден. Доступные маркеры:`,
-            markers.map(m => m.data?.id).filter(Boolean));
+        console.error(`❌ Маркер с id=${markerId} НЕ НАЙДЕН!`);
+        console.error(`Доступные маркеры:`, markers.map(m => ({
+            id: m.data?.id,
+            lat: m._latlng?.lat,
+            lng: m._latlng?.lng
+        })));
     }
 }
 
