@@ -111,11 +111,23 @@ export function getFlightCategoryInfo(category) {
 export async function getMETARData(lat, lng) {
     console.log('✈️ Запрос данных METAR...');
     try {
-        const airportUrl = `https://aviationweather.gov/api/data/metar?bbox=${lng - 1},${lat - 1},${lng + 1},${lat + 1}&format=json`;
-        const response = await fetch(airportUrl);
-        if (!response.ok) throw new Error(`METAR API error: ${response.status}`);
+        // CORS прокси для обхода блокировки
+        const CORS_PROXY = 'https://corsproxy.io/?';
+        const targetUrl = `https://aviationweather.gov/api/data/metar?bbox=${lng - 1},${lat - 1},${lng + 1},${lat + 1}&format=json`;
+        const airportUrl = `${CORS_PROXY}${encodeURIComponent(targetUrl)}`;
+
+        const response = await fetch(airportUrl, {
+            headers: {
+                'Accept': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`METAR API error: ${response.status} ${response.statusText}`);
+        }
 
         const airports = await response.json();
+
         if (!airports || airports.length === 0) {
             console.log('  ⚠️ Нет аэропортов в радиусе 100 км');
             return null;
@@ -133,8 +145,13 @@ export async function getMETARData(lat, lng) {
 
         console.log(`  ✅ METAR от ${nearest.icaoId} (${Math.round(nearest.distance)} км)`);
         return parseMETAR(nearest);
+
     } catch (error) {
-        console.error('Ошибка получения METAR:', error);
+        if (error.message === 'Failed to fetch') {
+            console.error('❌ Ошибка сети или CORS - проверьте соединение и доступность прокси');
+        } else {
+            console.error('❌ Ошибка получения METAR:', error.message);
+        }
         return null;
     }
 }
