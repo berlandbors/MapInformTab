@@ -257,7 +257,7 @@ async function scanLocation(lat, lng, isRescan = false) {
             metarElevation: weatherData.metarElevation || null,
             vertVisibility: weatherData.vertVisibility || null,
             metarTime: weatherData.metarTime || null,
-            metarData  // Сохраняем для отладки
+            metarData: metarData  // Сохраняем для отладки
         };
 
         // Quality assessment
