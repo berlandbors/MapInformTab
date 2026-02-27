@@ -33,6 +33,9 @@ export function getWindDirection(degrees) {
 }
 
 export function getRoadTypeName(highway) {
+    if (highway === undefined || highway === null || highway === '') {
+        return 'Неизвестно';
+    }
     const types = {
         motorway: 'Автомагистраль',
         trunk: 'Скоростная трасса',
@@ -57,6 +60,9 @@ export function getRoadTypeName(highway) {
 }
 
 export function getSurfaceName(surface) {
+    if (surface === undefined || surface === null || surface === '') {
+        return 'Не определено';
+    }
     const surfaces = {
         asphalt: 'Асфальт',
         concrete: 'Бетон',
@@ -66,9 +72,17 @@ export function getSurfaceName(surface) {
         dirt: 'Грунт',
         grass: 'Трава',
         cobblestone: 'Брусчатка',
-        paving_stones: 'Плитка'
+        paving_stones: 'Плитка',
+        compacted: 'Укатанное',
+        fine_gravel: 'Мелкий гравий',
+        ground: 'Земля',
+        mud: 'Грязь',
+        sand: 'Песок',
+        wood: 'Деревянное',
+        metal: 'Металл',
+        sett: 'Булыжник'
     };
-    return surfaces[surface] || surface || 'Н/Д';
+    return surfaces[surface] || surface || 'Не определено';
 }
 
 export function getObjectTypeName(type) {

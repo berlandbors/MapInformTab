@@ -60,13 +60,18 @@ export async function getRoadData(lat, lng, attempt = 1) {
 
             const tags = bestRoad.tags || {};
             console.log(`✅ Дорога найдена в радиусе ${radius}м: ${tags.name || tags.highway}`);
+            console.log('🛣️ Road surface data:', {
+                raw: tags.surface,
+                formatted: getSurfaceName(tags.surface),
+                roadSurfaceRaw: tags.surface !== undefined && tags.surface !== null ? tags.surface : null
+            });
 
             return {
                 roadName: tags.name || tags['name:ru'] || null,
                 roadType: getRoadTypeName(tags.highway),
                 maxSpeed: tags.maxspeed ? parseInt(tags.maxspeed) : null,
                 roadSurface: getSurfaceName(tags.surface),
-                roadSurfaceRaw: tags.surface || null,
+                roadSurfaceRaw: tags.surface !== undefined && tags.surface !== null ? tags.surface : null,
                 lanes: tags.lanes || null
             };
         }
