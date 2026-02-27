@@ -10,7 +10,21 @@ import { retryWithBackoff } from '../utils/retry.js';
  * @returns {Promise<object>} Weather data object
  */
 export async function getWeatherData(lat, lng) {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,surface_pressure,visibility,uv_index,precipitation,cloud_cover&daily=precipitation_probability_max,precipitation_hours&timezone=auto&wind_speed_unit=ms&forecast_days=1`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}` +
+        `&current=temperature_2m,apparent_temperature,dew_point_2m,relative_humidity_2m,` +
+        `wind_speed_10m,wind_direction_10m,wind_gusts_10m,` +
+        `precipitation,rain,snowfall,showers,snow_depth,` +
+        `cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,` +
+        `surface_pressure,pressure_msl,visibility,uv_index,` +
+        `shortwave_radiation,direct_radiation,diffuse_radiation,` +
+        `weather_code,is_day,cape` +
+        `&hourly=temperature_2m,apparent_temperature,precipitation_probability,precipitation,rain,` +
+        `wind_speed_10m,wind_gusts_10m,cloud_cover,visibility,uv_index,dew_point_2m,is_day` +
+        `&daily=temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,` +
+        `precipitation_sum,rain_sum,snowfall_sum,precipitation_hours,precipitation_probability_max,` +
+        `wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant,` +
+        `sunrise,sunset,sunshine_duration,daylight_duration,uv_index_max,uv_index_clear_sky_max` +
+        `&timezone=auto&wind_speed_unit=ms&forecast_days=7&past_days=1`;
     try {
         const data = await retryWithBackoff(async () => {
             const startTime = performance.now();
@@ -23,6 +37,7 @@ export async function getWeatherData(lat, lng) {
         const current = data.current;
 
         return {
+            // Existing flat fields (backward compatible)
             temp: Math.round(current.temperature_2m),
             feelsLike: Math.round(current.apparent_temperature),
             humidity: current.relative_humidity_2m,
@@ -38,11 +53,69 @@ export async function getWeatherData(lat, lng) {
             elevation: Math.round(data.elevation || 0),
             timezone: data.timezone || 'UTC',
             utcOffsetSeconds: data.utc_offset_seconds || 0,
-            precipProbability: data.daily?.precipitation_probability_max?.[0] ?? 0,
-            precipHours: data.daily?.precipitation_hours?.[0] ?? 0,
+            // past_days=1 means daily[0]=yesterday, daily[1]=today
+            precipProbability: data.daily?.precipitation_probability_max?.[1] ?? 0,
+            precipHours: data.daily?.precipitation_hours?.[1] ?? 0,
             precipType: getPrecipitationType(current.weather_code),
             latitude: Math.round(lat * 10000) / 10000,
-            longitude: Math.round(lng * 10000) / 10000
+            longitude: Math.round(lng * 10000) / 10000,
+
+            // Extended current fields
+            dewPoint: Math.round(current.dew_point_2m * 10) / 10,
+            windGusts: Math.round(current.wind_gusts_10m * 10) / 10,
+            rain: current.rain || 0,
+            snowfall: current.snowfall || 0,
+            showers: current.showers || 0,
+            snowDepth: current.snow_depth || 0,
+            cloudCoverLow: current.cloud_cover_low || 0,
+            cloudCoverMid: current.cloud_cover_mid || 0,
+            cloudCoverHigh: current.cloud_cover_high || 0,
+            pressureMsl: Math.round(current.pressure_msl),
+            solarRadiation: Math.round(current.shortwave_radiation || 0),
+            directRadiation: Math.round(current.direct_radiation || 0),
+            diffuseRadiation: Math.round(current.diffuse_radiation || 0),
+            isDay: current.is_day === 1,
+            cape: Math.round(current.cape || 0),
+
+            // Hourly forecast (48+ hours)
+            hourly: {
+                time: data.hourly?.time || [],
+                temperature: data.hourly?.temperature_2m || [],
+                apparentTemperature: data.hourly?.apparent_temperature || [],
+                precipitation: data.hourly?.precipitation || [],
+                precipitationProbability: data.hourly?.precipitation_probability || [],
+                rain: data.hourly?.rain || [],
+                windSpeed: data.hourly?.wind_speed_10m || [],
+                windGusts: data.hourly?.wind_gusts_10m || [],
+                cloudCover: data.hourly?.cloud_cover || [],
+                visibility: data.hourly?.visibility || [],
+                uvIndex: data.hourly?.uv_index || [],
+                dewPoint: data.hourly?.dew_point_2m || [],
+                isDay: data.hourly?.is_day || []
+            },
+
+            // Daily forecast (7 days)
+            daily: {
+                time: data.daily?.time || [],
+                temperatureMax: data.daily?.temperature_2m_max || [],
+                temperatureMin: data.daily?.temperature_2m_min || [],
+                apparentTemperatureMax: data.daily?.apparent_temperature_max || [],
+                apparentTemperatureMin: data.daily?.apparent_temperature_min || [],
+                precipitationSum: data.daily?.precipitation_sum || [],
+                rainSum: data.daily?.rain_sum || [],
+                snowfallSum: data.daily?.snowfall_sum || [],
+                precipitationHours: data.daily?.precipitation_hours || [],
+                precipitationProbabilityMax: data.daily?.precipitation_probability_max || [],
+                windSpeedMax: data.daily?.wind_speed_10m_max || [],
+                windGustsMax: data.daily?.wind_gusts_10m_max || [],
+                windDirectionDominant: data.daily?.wind_direction_10m_dominant || [],
+                sunrise: data.daily?.sunrise || [],
+                sunset: data.daily?.sunset || [],
+                sunshineDuration: data.daily?.sunshine_duration || [],
+                daylightDuration: data.daily?.daylight_duration || [],
+                uvIndexMax: data.daily?.uv_index_max || [],
+                uvIndexClearSkyMax: data.daily?.uv_index_clear_sky_max || []
+            }
         };
     } catch (error) {
         console.error('Ошибка получения погоды:', error);
@@ -51,11 +124,22 @@ export async function getWeatherData(lat, lng) {
             windSpeed: 'Н/Д', windDir: 0, pressure: 'Н/Д',
             visibility: 'Н/Д', uvIndex: 'Н/Д', precipitation: 'Н/Д',
             cloudCover: 'Н/Д', weatherCode: 0, condition: 'Недоступно',
-            elevation: 'Н/Д',
-            timezone: 'Н/Д', utcOffsetSeconds: 0,
+            elevation: 'Н/Д', timezone: 'Н/Д', utcOffsetSeconds: 0,
             precipProbability: 0, precipHours: 0, precipType: 'Нет',
             latitude: Math.round(lat * 10000) / 10000,
-            longitude: Math.round(lng * 10000) / 10000
+            longitude: Math.round(lng * 10000) / 10000,
+            dewPoint: 'Н/Д', windGusts: 'Н/Д', rain: 0, snowfall: 0,
+            showers: 0, snowDepth: 0, cloudCoverLow: 0, cloudCoverMid: 0,
+            cloudCoverHigh: 0, pressureMsl: 'Н/Д', solarRadiation: 0,
+            directRadiation: 0, diffuseRadiation: 0, isDay: true, cape: 0,
+            hourly: { time: [], temperature: [], apparentTemperature: [], precipitation: [],
+                precipitationProbability: [], rain: [], windSpeed: [], windGusts: [],
+                cloudCover: [], visibility: [], uvIndex: [], dewPoint: [], isDay: [] },
+            daily: { time: [], temperatureMax: [], temperatureMin: [], apparentTemperatureMax: [],
+                apparentTemperatureMin: [], precipitationSum: [], rainSum: [], snowfallSum: [],
+                precipitationHours: [], precipitationProbabilityMax: [], windSpeedMax: [],
+                windGustsMax: [], windDirectionDominant: [], sunrise: [], sunset: [],
+                sunshineDuration: [], daylightDuration: [], uvIndexMax: [], uvIndexClearSkyMax: [] }
         };
     }
 }

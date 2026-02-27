@@ -6,6 +6,7 @@ import { getWeatherIcon, getWeatherCondition, getWindDirection, getRoadTypeName,
          getObjectTypeName } from '../utils/formatters.js';
 import { getConfidenceIcon, getConfidenceLabel } from '../analysis/weather.js';
 import { getCurrentTimeForTimezone } from '../api/worldtime.js';
+import { getAQICategory } from '../api/openmeteo-airquality.js';
 import { markers, currentMarkerData, setCurrentMarkerData, isMobile } from '../../state.js';
 import { focusOnLayer } from './layers.js';
 import { updateTimestamp } from './map.js';
@@ -221,10 +222,22 @@ export function openModal(data) {
                 <span class="modal-label">Влажность:</span>
                 <span class="modal-value">${data.humidity}%</span>
             </div>
+            ${data.dewPoint != null && data.dewPoint !== 'Н/Д' ? `
+            <div class="modal-row">
+                <span class="modal-label">Точка росы:</span>
+                <span class="modal-value">${data.dewPoint}°C</span>
+            </div>
+            ` : ''}
             <div class="modal-row">
                 <span class="modal-label">Скорость ветра:</span>
                 <span class="modal-value">${data.windSpeed} м/с</span>
             </div>
+            ${data.windGusts != null && data.windGusts !== 'Н/Д' ? `
+            <div class="modal-row">
+                <span class="modal-label">Порывы ветра:</span>
+                <span class="modal-value">${data.windGusts} м/с</span>
+            </div>
+            ` : ''}
             <div class="modal-row">
                 <span class="modal-label">Направление ветра:</span>
                 <span class="modal-value">${getWindDirection(data.windDir)} (${data.windDir}°)</span>
@@ -245,51 +258,97 @@ export function openModal(data) {
                 <span class="modal-label">Облачность:</span>
                 <span class="modal-value">${data.cloudCover}%</span>
             </div>
+            ${data.cloudCoverLow || data.cloudCoverMid || data.cloudCoverHigh ? `
+            <div class="modal-row">
+                <span class="modal-label">Облака по слоям:</span>
+                <span class="modal-value">Н: ${data.cloudCoverLow}% / С: ${data.cloudCoverMid}% / В: ${data.cloudCoverHigh}%</span>
+            </div>
+            ` : ''}
             <div class="modal-row">
                 <span class="modal-label">Количество осадков:</span>
                 <span class="modal-value">${data.precipitation} мм</span>
             </div>
+            ${data.rain > 0 ? `
+            <div class="modal-row">
+                <span class="modal-label">Дождь:</span>
+                <span class="modal-value">${data.rain} мм</span>
+            </div>
+            ` : ''}
+            ${data.snowfall > 0 ? `
+            <div class="modal-row">
+                <span class="modal-label">Снег:</span>
+                <span class="modal-value">${data.snowfall} мм</span>
+            </div>
+            ` : ''}
+            ${data.showers > 0 ? `
+            <div class="modal-row">
+                <span class="modal-label">Ливни:</span>
+                <span class="modal-value">${data.showers} мм</span>
+            </div>
+            ` : ''}
+            ${data.snowDepth > 0 ? `
+            <div class="modal-row">
+                <span class="modal-label">Высота снежного покрова:</span>
+                <span class="modal-value">${data.snowDepth} м</span>
+            </div>
+            ` : ''}
+            ${data.solarRadiation > 0 ? `
+            <div class="modal-row">
+                <span class="modal-label">Солнечная радиация:</span>
+                <span class="modal-value">${data.solarRadiation} Вт/м²</span>
+            </div>
+            ` : ''}
+            ${data.cape > 0 ? `
+            <div class="modal-row">
+                <span class="modal-label">CAPE (риск гроз):</span>
+                <span class="modal-value">${data.cape} Дж/кг${data.cape > 1000 ? ' ⚡ Высокий риск!' : data.cape > 500 ? ' ⚡ Умеренный риск' : ''}</span>
+            </div>
+            ` : ''}
             <div class="modal-row">
                 <span class="modal-label">Код погоды:</span>
                 <span class="modal-value">${data.weatherCode}</span>
             </div>
         </div>
 
-        ${data.aqi ? `
+        ${data.airQualityData ? `
         <div class="modal-section">
             <div class="modal-section-title">🌫️ КАЧЕСТВО ВОЗДУХА</div>
             <div class="modal-row">
-                <span class="modal-label">Индекс качества (AQI):</span>
-                <span class="modal-value aqi-${data.aqi}">${data.aqiText} (${data.aqi}/5)</span>
+                <span class="modal-label">Индекс AQI:</span>
+                ${(() => { const aqiCat = getAQICategory(data.airQualityData.current.aqi); return `<span class="modal-value" style="color: ${aqiCat.color}">${data.airQualityData.current.aqi} — ${aqiCat.level} ${aqiCat.icon}</span>`; })()}
             </div>
             <div class="modal-row">
                 <span class="modal-label">PM2.5 (мелкая пыль):</span>
-                <span class="modal-value">${data.pm25} мкг/м³</span>
+                <span class="modal-value">${data.airQualityData.current.pm25} мкг/м³</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">PM10 (крупная пыль):</span>
-                <span class="modal-value">${data.pm10} мкг/м³</span>
+                <span class="modal-value">${data.airQualityData.current.pm10} мкг/м³</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">CO (угарный газ):</span>
-                <span class="modal-value">${data.co} мкг/м³</span>
+                <span class="modal-value">${data.airQualityData.current.carbonMonoxide} мкг/м³</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">NO₂ (диоксид азота):</span>
-                <span class="modal-value">${data.no2} мкг/м³</span>
+                <span class="modal-value">${data.airQualityData.current.nitrogenDioxide} мкг/м³</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">O₃ (озон):</span>
-                <span class="modal-value">${data.o3} мкг/м³</span>
+                <span class="modal-value">${data.airQualityData.current.ozone} мкг/м³</span>
             </div>
             <div class="modal-row">
                 <span class="modal-label">SO₂ (диоксид серы):</span>
-                <span class="modal-value">${data.so2} мкг/м³</span>
+                <span class="modal-value">${data.airQualityData.current.sulphurDioxide} мкг/м³</span>
             </div>
-            ${data.nh3 != null ? `
             <div class="modal-row">
                 <span class="modal-label">NH₃ (аммиак):</span>
-                <span class="modal-value">${data.nh3} мкг/м³</span>
+                <span class="modal-value">${data.airQualityData.current.ammonia} мкг/м³</span>
+            </div>
+            ${(data.airQualityData.current.alderPollen + data.airQualityData.current.birchPollen + data.airQualityData.current.grassPollen) > 0 ? `
+            <div class="modal-row">
+                <span class="modal-label">Пыльца (ольха/берёза/трава):</span>
+                <span class="modal-value">${data.airQualityData.current.alderPollen} / ${data.airQualityData.current.birchPollen} / ${data.airQualityData.current.grassPollen} зёрен/м³</span>
             </div>
             ` : ''}
         </div>
@@ -317,10 +376,10 @@ export function openModal(data) {
             <div class="hourly-forecast-grid">
                 ${data.hourlyForecast.slice(0, 12).map(h => `
                 <div class="forecast-hour-card">
-                    <div class="forecast-time-label">${new Date(h.dt * 1000).toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}</div>
-                    <div class="forecast-icon-lg">${getWeatherIcon(h.weather?.id || 800)}</div>
-                    <div class="forecast-temp-lg">${Math.round(h.temp)}°C</div>
-                    <div class="forecast-precip-pct">${Math.round((h.pop || 0) * 100)}%</div>
+                    <div class="forecast-time-label">${h.time.toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'})}</div>
+                    <div class="forecast-icon-lg">${h.rain > 0 ? '🌧️' : h.precipitation > 0 ? '🌨️' : h.isDay ? (h.cloudCover > 70 ? '☁️' : h.cloudCover > 30 ? '⛅' : '☀️') : '🌙'}</div>
+                    <div class="forecast-temp-lg">${h.temp}°C</div>
+                    <div class="forecast-precip-pct">💧 ${h.precipProb}%</div>
                 </div>
                 `).join('')}
             </div>
@@ -329,19 +388,18 @@ export function openModal(data) {
 
         ${data.dailyForecast && data.dailyForecast.length > 0 ? `
         <div class="modal-section">
-            <div class="modal-section-title">📅 ПРОГНОЗ НА 8 ДНЕЙ</div>
+            <div class="modal-section-title">📅 ПРОГНОЗ НА 7 ДНЕЙ</div>
             <div class="daily-forecast-list">
                 ${data.dailyForecast.map(d => `
                 <div class="forecast-day-row">
-                    <div class="forecast-date-label">${new Date(d.dt * 1000).toLocaleDateString('ru-RU', {weekday: 'short', day: 'numeric', month: 'short'})}</div>
-                    <div class="forecast-icon-lg">${getWeatherIcon(d.weather?.id || 800)}</div>
+                    <div class="forecast-date-label">${d.dayOfWeek}, ${d.date.toLocaleDateString('ru-RU', {day: 'numeric', month: 'short'})}</div>
+                    <div class="forecast-icon-lg">${d.precipSum > 0 ? (d.snowfallSum > 0 ? '🌨️' : '🌧️') : '☀️'}</div>
                     <div class="forecast-temps-row">
-                        <span class="temp-max-val">↑${Math.round(d.temp?.max ?? d.temp)}°</span>
-                        <span class="temp-min-val">↓${Math.round(d.temp?.min ?? d.temp)}°</span>
+                        <span class="temp-max-val">↑${d.tempMax}°</span>
+                        <span class="temp-min-val">↓${d.tempMin}°</span>
                     </div>
-                    <div class="forecast-desc-sm">${d.weather?.description || ''}</div>
-                    <div class="forecast-precip-pct">💧 ${Math.round((d.pop || 0) * 100)}%</div>
-                    ${d.moonPhase !== undefined ? `<div class="forecast-moon-phase">${getMoonPhaseEmoji(d.moonPhase)}</div>` : ''}
+                    <div class="forecast-precip-pct">💧 ${d.precipProb}%</div>
+                    ${d.windGustsMax > 10 ? `<div class="forecast-desc-sm">💨 порывы до ${d.windGustsMax} м/с</div>` : ''}
                 </div>
                 `).join('')}
             </div>
