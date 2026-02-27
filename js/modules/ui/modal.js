@@ -1491,6 +1491,58 @@ export function displayFullInfo(data) {
                 <span class="info-label">✈️ Данные с аэропорта:</span>
                 <span class="info-value">${data.metarStation} (${data.metarDistance} км)</span>
             </div>` : ''}
+
+            ${data.flightCategory ? `
+            <div class="info-row">
+                <span class="info-label">🛫 Категория полётов:</span>
+                <span class="info-value">
+                    <span class="flight-category ${data.flightCategory.toLowerCase()}">${getFlightCategoryLabel(data.flightCategory)}</span>
+                </span>
+            </div>` : ''}
+
+            ${data.windGust ? `
+            <div class="info-row">
+                <span class="info-label">💨 Порывы ветра:</span>
+                <span class="info-value">${data.windGust} м/с</span>
+            </div>` : ''}
+
+            ${data.weatherDecoded ? `
+            <div class="info-row">
+                <span class="info-label">🌦️ Погодные явления:</span>
+                <span class="info-value">${data.weatherDecoded}</span>
+            </div>` : ''}
+
+            ${data.vertVisibility ? `
+            <div class="info-row">
+                <span class="info-label">⬆️ Вертикальная видимость:</span>
+                <span class="info-value">${data.vertVisibility} м</span>
+            </div>` : ''}
+
+            ${data.cloudLayers && data.cloudLayers.length > 0 ? `
+            <div class="info-row">
+                <span class="info-label">☁️ Слои облачности:</span>
+                <div class="cloud-layers">
+                    ${data.cloudLayers.map(layer => `
+                        <div class="cloud-layer">
+                            ${getCloudCoverLabel(layer.cover)} на высоте ${layer.base_m} м (${layer.base_ft} ft)
+                        </div>
+                    `).join('')}
+                </div>
+            </div>` : ''}
+
+            ${data.metarElevation ? `
+            <div class="info-row">
+                <span class="info-label">📍 Высота станции:</span>
+                <span class="info-value">${data.metarElevation} м</span>
+            </div>` : ''}
+
+            ${data.metarRaw ? `
+            <div class="info-row">
+                <details class="metar-raw-details">
+                    <summary class="info-label">📄 Сырой METAR</summary>
+                    <code class="metar-raw-code">${data.metarRaw}</code>
+                </details>
+            </div>` : ''}
         </div>
 
         <div class="info-section">
@@ -1835,4 +1887,26 @@ export function displayFullInfo(data) {
     });
 
     updateTimestamp();
+}
+
+function getFlightCategoryLabel(category) {
+    const labels = {
+        'VFR': '🟢 VFR (Отличная)',
+        'MVFR': '🔵 MVFR (Умеренная)',
+        'IFR': '🟠 IFR (Плохая)',
+        'LIFR': '🔴 LIFR (Очень плохая)'
+    };
+    return labels[category] || category;
+}
+
+function getCloudCoverLabel(cover) {
+    const labels = {
+        'CLR': 'Ясно',
+        'SKC': 'Ясно',
+        'FEW': 'Немного облаков',
+        'SCT': 'Рассеянные облака',
+        'BKN': 'Облачно с прояснениями',
+        'OVC': 'Сплошная облачность'
+    };
+    return labels[cover] || cover;
 }
