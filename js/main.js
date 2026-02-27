@@ -43,6 +43,21 @@ import {
     setActiveMobileTab, incrementMarkerCount, decrementMarkerCount
 } from './state.js';
 
+// Constants
+const QUALITY_THRESHOLD_FOR_RESCAN = 50;
+
+// Safe localStorage wrapper
+function safeLocalStorage(action, key, value = null) {
+    try {
+        if (action === 'get') return localStorage.getItem(key);
+        if (action === 'set') localStorage.setItem(key, value);
+        return true;
+    } catch (e) {
+        console.warn('localStorage недоступен:', e);
+        return null;
+    }
+}
+
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 MapInformTab загружается...');
@@ -51,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initSearch(scanLocation);
     initLayers();
 
-    const isCollapsed = localStorage.getItem('layersPanelCollapsed') === 'true';
+    const isCollapsed = safeLocalStorage('get', 'layersPanelCollapsed') === 'true';
     if (isCollapsed) {
         document.getElementById('layersPanel')?.classList.add('collapsed');
     }
@@ -65,7 +80,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setInterval(updateAllMarkerTimes, 1000);
 
     setupMobileEventListeners();
-    setupNotificationStyles();
 
     document.addEventListener('keydown', function(e) {
         if (e.key === 'Escape') {
@@ -77,6 +91,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Main scan function
 async function scanLocation(lat, lng, isRescan = false) {
+    // Coordinate validation
+    if (typeof lat !== 'number' || typeof lng !== 'number' ||
+        isNaN(lat) || isNaN(lng) ||
+        lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        showError('Некорректные координаты. Широта: -90 до 90, Долгота: -180 до 180');
+        return;
+    }
+
     incrementMarkerCount();
     setLastScannedCoords({ lat, lng });
     showLoading();
@@ -224,7 +246,7 @@ async function scanLocation(lat, lng, isRescan = false) {
         }
 
         // Auto-rescan on low quality
-        if (fullData.quality.score < 50 && !isRescan) {
+        if (fullData.quality.score < QUALITY_THRESHOLD_FOR_RESCAN && !isRescan) {
             console.log('⚠️ Низкое качество данных, автоматическое пересканирование...');
             decrementMarkerCount();
             await sleep(1500);
@@ -277,7 +299,7 @@ function initMobileMode() {
         showMobileInterface();
         checkAndShowNotification();
 
-        const savedTab = localStorage.getItem('mobile_active_tab');
+        const savedTab = safeLocalStorage('get', 'mobile_active_tab');
         if (savedTab) {
             setActiveMobileTab(savedTab);
             switchMobileTab(savedTab);
@@ -304,7 +326,7 @@ function hideMobileInterface() {
 }
 
 function checkAndShowNotification() {
-    const dismissed = localStorage.getItem('mobile_notification_dismissed');
+    const dismissed = safeLocalStorage('get', 'mobile_notification_dismissed');
     if (!dismissed) {
         const notification = document.getElementById('mobileNotification');
         if (notification) notification.style.display = 'flex';
@@ -313,7 +335,7 @@ function checkAndShowNotification() {
 
 function switchMobileTab(tab) {
     setActiveMobileTab(tab);
-    localStorage.setItem('mobile_active_tab', tab);
+    safeLocalStorage('set', 'mobile_active_tab', tab);
 
     const mapEl = document.getElementById('map');
     const infoPanel = document.getElementById('info-panel');
@@ -332,8 +354,12 @@ function switchMobileTab(tab) {
         tabInfo?.classList.add('active');
     }
 
-    if (tab === 'map' && map) {
-        setTimeout(() => { map.invalidateSize(); }, 300);
+    if (tab === 'map') {
+        setTimeout(() => {
+            if (map && typeof map.invalidateSize === 'function') {
+                map.invalidateSize();
+            }
+        }, 300);
     }
 }
 
@@ -349,7 +375,7 @@ function setupMobileEventListeners() {
         closeBtn.addEventListener('click', () => {
             const dontShow = document.getElementById('dontShowAgain');
             if (dontShow && dontShow.checked) {
-                localStorage.setItem('mobile_notification_dismissed', 'true');
+                safeLocalStorage('set', 'mobile_notification_dismissed', 'true');
             }
             const notification = document.getElementById('mobileNotification');
             if (notification) notification.style.display = 'none';
@@ -373,25 +399,6 @@ function setupMobileEventListeners() {
     });
 }
 
-function setupNotificationStyles() {
-    const notificationStyles = document.createElement('style');
-    notificationStyles.textContent = `
-.share-notification {
-    position: fixed; top: 80px; right: 20px; z-index: 10000;
-    background: linear-gradient(135deg, #001a00 0%, #003300 100%);
-    border: 2px solid #00ff00; border-radius: 8px; padding: 20px;
-    color: #00ff00; font-family: 'Courier New', monospace; font-size: 14px;
-    box-shadow: 0 0 30px rgba(0, 255, 0, 0.5);
-    transform: translateX(400px); opacity: 0;
-    transition: all 0.3s ease; max-width: 300px; text-align: center;
-}
-.share-notification.show { transform: translateX(0); opacity: 1; }
-@media (max-width: 768px) {
-    .share-notification { right: 10px; left: 10px; max-width: none; top: 70px; }
-}`;
-    document.head.appendChild(notificationStyles);
-}
-
 // Expose functions to window for HTML onclick handlers
 window.scanLocation = scanLocation;
 window.clearMarkers = () => clearMarkers();
@@ -413,7 +420,7 @@ window.toggleLayersPanel = function() {
     const panel = document.getElementById('layersPanel');
     if (panel) {
         panel.classList.toggle('collapsed');
-        localStorage.setItem('layersPanelCollapsed', panel.classList.contains('collapsed'));
+        safeLocalStorage('set', 'layersPanelCollapsed', panel.classList.contains('collapsed'));
     }
 };
 window.rescanCurrentLocation = function() {

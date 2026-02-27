@@ -3372,3 +3372,38 @@ body {
 .extra-tags-content::-webkit-scrollbar-thumb:hover {
     background: rgba(0, 255, 0, 0.5);
 }
+
+/* Share notification styles */
+.share-notification {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 10000;
+    background: linear-gradient(135deg, #001a00 0%, #003300 100%);
+    border: 2px solid #00ff00;
+    border-radius: 8px;
+    padding: 20px;
+    color: #00ff00;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    box-shadow: 0 0 30px rgba(0, 255, 0, 0.5);
+    transform: translateX(400px);
+    opacity: 0;
+    transition: all 0.3s ease;
+    max-width: 300px;
+    text-align: center;
+}
+
+.share-notification.show {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+@media (max-width: 768px) {
+    .share-notification {
+        right: 10px;
+        left: 10px;
+        max-width: none;
+        top: 70px;
+    }
+}
