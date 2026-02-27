@@ -6,6 +6,7 @@ import { getWeatherIcon, getWeatherCondition, getWindDirection, getRoadTypeName,
          getSurfaceName, getObjectTypeName, getSeverityName, getSeverityIcon,
          getQualityLabel, getQualityColorClass } from '../utils/formatters.js';
 import { getCurrentTimeForTimezone } from '../api/worldtime.js';
+import { getAQICategory } from '../api/openmeteo-airquality.js';
 
 export function createPopupContent(data) {
     const weatherIcon = getWeatherIcon(data.weatherCode);
@@ -128,16 +129,16 @@ export function createPopupContent(data) {
         </div>
         ` : ''}
 
-        ${data.aqi ? `
+        ${data.airQualityData ? `
         <div class="popup-section">
             <div class="popup-section-title">🌫️ КАЧЕСТВО ВОЗДУХА</div>
             <div class="popup-row">
                 <span class="popup-label">Индекс AQI:</span>
-                <span class="popup-value aqi-${data.aqi}">${data.aqiText} (${data.aqi}/5)</span>
+                ${(() => { const aqiCat = getAQICategory(data.airQualityData.current.aqi); return `<span class="popup-value" style="color: ${aqiCat.color}">${data.airQualityData.current.aqi} — ${aqiCat.level}</span>`; })()}
             </div>
             <div class="popup-row">
                 <span class="popup-label">PM2.5:</span>
-                <span class="popup-value">${data.pm25} мкг/м³</span>
+                <span class="popup-value">${data.airQualityData.current.pm25} мкг/м³</span>
             </div>
         </div>
         ` : ''}

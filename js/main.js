@@ -3,6 +3,8 @@
 // API modules
 import { getWeatherDataMultiPoint } from './modules/api/openmeteo.js';
 import { getHistoricalPrecipitation, getHistoricalWetness } from './modules/api/openmeteo-historical.js';
+import { getAirQuality } from './modules/api/openmeteo-airquality.js';
+import { formatHourlyForecast, formatDailyForecast } from './modules/api/openmeteo-forecast.js';
 import { getElevationAndSlope } from './modules/api/elevation.js';
 import { getLocationData } from './modules/api/nominatim.js';
 import { getRoadData, getPedestrianData, getShadingData, getCoverageData } from './modules/api/overpass.js';
@@ -87,6 +89,10 @@ async function scanLocation(lat, lng, isRescan = false) {
         // 1. Multi-point weather data (Open-Meteo as base)
         let weatherData = await getWeatherDataMultiPoint(lat, lng);
 
+        // Format hourly and daily forecasts from weather data
+        const hourlyForecast = formatHourlyForecast(weatherData.hourly);
+        const dailyForecast = formatDailyForecast(weatherData.daily);
+
         // 2. METAR data
         const metarData = await getMETARData(lat, lng);
         weatherData = mergeWeatherData(weatherData, metarData);
@@ -125,12 +131,13 @@ async function scanLocation(lat, lng, isRescan = false) {
         saveWeatherHistory(weatherData);
 
         // 8. Real-data enrichment (parallel, with graceful degradation)
-        const [historicalPrecip, historicalWetness, elevationData, shadingRaw, hasRoof] = await Promise.all([
+        const [historicalPrecip, historicalWetness, elevationData, shadingRaw, hasRoof, airQualityData] = await Promise.all([
             getHistoricalPrecipitation(lat, lng).catch(() => null),
             getHistoricalWetness(lat, lng).catch(() => null),
             getElevationAndSlope(lat, lng).catch(() => null),
             getShadingData(lat, lng).catch(() => null),
-            getCoverageData(lat, lng).catch(() => false)
+            getCoverageData(lat, lng).catch(() => false),
+            getAirQuality(lat, lng).catch(() => null)
         ]);
 
         // Compute dynamic drainage using real data
@@ -180,6 +187,9 @@ async function scanLocation(lat, lng, isRescan = false) {
             surfaceCondition,
             trafficAnalysis,
             realData,
+            hourlyForecast,
+            dailyForecast,
+            airQualityData,
             id: currentMarkerCount,
             scanTime: new Date().toLocaleString('ru-RU')
         };
