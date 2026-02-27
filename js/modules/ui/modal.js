@@ -357,19 +357,18 @@ export function openModal(data) {
             </div>
         </div>
 
-        ${data.metarStation || data.flightCategory || data.windGust || data.weatherDecoded || data.vertVisibility || (data.cloudLayers && data.cloudLayers.length > 0) || data.metarElevation || data.metarRaw ? `
+        ${data.metarStation ? `
         <div class="modal-section">
             <div class="modal-section-title">✈️ АВИАЦИОННАЯ ПОГОДА (METAR)</div>
 
-            ${data.metarStation ? `
-            <div class="modal-row">
-                <span class="modal-label">Данные с аэропорта:</span>
+            <div class="modal-row metar-badge">
+                <span class="modal-label">✈️ Данные с аэропорта:</span>
                 <span class="modal-value">${data.metarStation} (${data.metarDistance} км)</span>
-            </div>` : ''}
+            </div>
 
             ${data.flightCategory ? `
             <div class="modal-row">
-                <span class="modal-label">Категория полётов:</span>
+                <span class="modal-label">🛫 Категория полётов:</span>
                 <span class="modal-value">
                     <span class="flight-category ${data.flightCategory.toLowerCase()}">
                         ${getFlightCategoryLabel(data.flightCategory)}
@@ -379,42 +378,44 @@ export function openModal(data) {
 
             ${data.windGust ? `
             <div class="modal-row">
-                <span class="modal-label">Порывы ветра:</span>
+                <span class="modal-label">💨 Порывы ветра:</span>
                 <span class="modal-value">${data.windGust} м/с</span>
             </div>` : ''}
 
             ${data.weatherDecoded ? `
             <div class="modal-row">
-                <span class="modal-label">Погодные явления:</span>
+                <span class="modal-label">🌦️ Погодные явления:</span>
                 <span class="modal-value">${data.weatherDecoded}</span>
             </div>` : ''}
 
             ${data.vertVisibility ? `
             <div class="modal-row">
-                <span class="modal-label">Вертикальная видимость:</span>
+                <span class="modal-label">⬆️ Вертикальная видимость:</span>
                 <span class="modal-value">${data.vertVisibility} м</span>
             </div>` : ''}
 
             ${data.cloudLayers && data.cloudLayers.length > 0 ? `
             <div class="modal-row">
-                <span class="modal-label">Слои облачности:</span>
-                <div class="modal-value" style="display: flex; flex-direction: column; gap: 4px; text-align: right;">
+                <span class="modal-label">☁️ Слои облачности:</span>
+                <div class="cloud-layers">
                     ${data.cloudLayers.map(layer => `
-                        <div>${getCloudCoverLabel(layer.cover)} — ${layer.base_m} м (${layer.base_ft} ft)</div>
+                        <div class="cloud-layer">
+                            ${getCloudCoverLabel(layer.cover)} на высоте ${layer.base_m} м (${layer.base_ft} ft)
+                        </div>
                     `).join('')}
                 </div>
             </div>` : ''}
 
             ${data.metarElevation ? `
             <div class="modal-row">
-                <span class="modal-label">Высота станции:</span>
+                <span class="modal-label">📍 Высота станции:</span>
                 <span class="modal-value">${data.metarElevation} м</span>
             </div>` : ''}
 
             ${data.metarRaw ? `
             <div class="modal-row">
                 <details class="metar-raw-details" style="width: 100%;">
-                    <summary class="modal-label">📄 Сырой METAR (показать)</summary>
+                    <summary class="modal-label">📄 Сырой METAR</summary>
                     <code class="metar-raw-code">${data.metarRaw}</code>
                 </details>
             </div>` : ''}
