@@ -24,6 +24,26 @@ export function initMap(scanLocationFn) {
         "OpenTopoMap": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors, © OpenTopoMap',
             maxZoom: 17
+        }),
+        "CyclOSM (Велодорожки)": L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors, © CyclOSM',
+            maxZoom: 20
+        }),
+        "Transport Map": L.tileLayer('https://tile.memomaps.de/tilegen/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18
+        })
+    };
+
+    // Оверлейные слои
+    const overlayLayers = {
+        "Надписи и номера": L.tileLayer('https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© CartoDB'
+        }),
+        "Погода (Температура)": L.tileLayer('https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=YOUR_API_KEY', {
+            maxZoom: 19,
+            opacity: 0.5
         })
     };
 
@@ -31,7 +51,51 @@ export function initMap(scanLocationFn) {
     baseLayers["OSM HOT (Детальный)"].addTo(m);
 
     // Добавляем контроллер переключения слоёв
-    L.control.layers(baseLayers).addTo(m);
+    L.control.layers(baseLayers, overlayLayers, {
+        position: 'topright',
+        collapsed: true
+    }).addTo(m);
+
+    // Полноэкранный режим
+    if (L.Control.Fullscreen) {
+        m.addControl(new L.Control.Fullscreen({
+            position: 'topleft'
+        }));
+    }
+
+    // Линейка для измерений
+    if (L.control.ruler) {
+        L.control.ruler({
+            position: 'topleft',
+            lengthUnit: {
+                display: 'км',
+                decimal: 2,
+                factor: 0.001
+            }
+        }).addTo(m);
+    }
+
+    // Координатная сетка
+    if (L.latlngGraticule) {
+        L.latlngGraticule({
+            showLabel: true,
+            color: '#777',
+            weight: 0.5,
+            fontColor: '#555'
+        }).addTo(m);
+    }
+
+    // Мини-карта (обзор)
+    if (L.Control.MiniMap) {
+        const miniMapLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 13
+        });
+        new L.Control.MiniMap(miniMapLayer, {
+            toggleDisplay: true,
+            minimized: false,
+            position: 'bottomright'
+        }).addTo(m);
+    }
 
     setMap(m);
 
