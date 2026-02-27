@@ -412,6 +412,30 @@ function calculateDryingAnalysis(env, histPrecip) {
 }
 
 /**
+ * Рассчитывает количество часов с последнего дождя
+ * @param {Array} hourlyData - массив значений осадков по часам
+ * @returns {number|null} - количество часов с последнего дождя или null, если дождя не было
+ */
+function calculateHoursSinceRain(hourlyData) {
+    if (!hourlyData || !Array.isArray(hourlyData)) {
+        console.warn('⚠️ Нет данных hourlyData для расчета времени с последнего дождя');
+        return null;
+    }
+
+    // Ищем последний час с осадками (порог 0.1 мм)
+    for (let i = hourlyData.length - 1; i >= 0; i--) {
+        if (hourlyData[i] > 0.1) {
+            const hours = hourlyData.length - 1 - i;
+            console.log(`✅ Последний дождь был ${hours} часов назад (значение: ${hourlyData[i]} мм)`);
+            return hours;
+        }
+    }
+
+    console.log('ℹ️ Дождя не было за весь период наблюдения');
+    return null; // дождя не было за весь период
+}
+
+/**
  * Build detailed surface condition for UI display
  * @param {object} weatherData - Current weather data
  * @param {object} roadData - Road data from Overpass
@@ -436,10 +460,34 @@ export function buildSurfaceCondition(weatherData, roadData, surfaceAnalysis) {
         cloudCover: weatherData.cloudCover
     };
 
-    const histPrecip = surfaceAnalysis?.histData?.last24h || 0;
+    const historicalPrecip = surfaceAnalysis?.histData || {};
+    const histPrecip = historicalPrecip.last24h || 0;
 
     // Рассчитать анализ высыхания
     const dryingAnalysis = calculateDryingAnalysis(env, histPrecip);
+
+    // Рассчитываем время с последнего дождя
+    const NO_RAIN_SENTINEL = 999; // означает: дождя не было за весь период или нет данных
+    let hoursSinceRain = 0;
+    if (historicalPrecip?.hourlyData) {
+        const calculated = calculateHoursSinceRain(historicalPrecip.hourlyData);
+        hoursSinceRain = calculated !== null ? calculated : NO_RAIN_SENTINEL;
+        console.log(`🕐 Часов с последнего дождя: ${hoursSinceRain === NO_RAIN_SENTINEL ? 'неизвестно' : hoursSinceRain}`);
+    } else {
+        console.warn('⚠️ Нет исторических данных об осадках для расчета');
+    }
+
+    let lastRainText = 'Неизвестно';
+    if (hoursSinceRain === 0) {
+        lastRainText = 'Только что';
+    } else if (hoursSinceRain === NO_RAIN_SENTINEL) {
+        lastRainText = 'Более суток назад или нет данных';
+    } else if (hoursSinceRain < 24) {
+        lastRainText = `${hoursSinceRain} ч назад`;
+    } else {
+        const days = Math.floor(hoursSinceRain / 24);
+        lastRainText = `${days} д назад`;
+    }
 
     const conditionMap = {
         'dry': { icon: '☀️', name: 'Сухая дорога', severity: 'low' },
@@ -476,7 +524,17 @@ export function buildSurfaceCondition(weatherData, roadData, surfaceAnalysis) {
         },
         recommendations,
         forPedestrians,
-        dryingAnalysis
+        dryingAnalysis,
+        precipAnalysisDetailed: {
+            total1h: historicalPrecip.last1h ?? 0,
+            total3h: historicalPrecip.last3h ?? 0,
+            total6h: historicalPrecip.last6h ?? 0,
+            total24h: historicalPrecip.last24h ?? 0,
+            hoursSinceRain,
+            lastRainText,
+            currentIntensity: env.rain || env.precipitation,
+            continuousRainHours: 0
+        }
     };
 }
 

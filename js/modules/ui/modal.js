@@ -937,7 +937,7 @@ export function createDetailedSurfaceInfo(surfaceData) {
                 </div>
                 <div class="precip-current">
                     <div class="period-item"><span>Интенсивность</span><span>${(pa.currentIntensity || 0) > 0.1 ? (pa.currentIntensity || 0) + ' мм/ч' + (pa.precipIntensityClass ? ' (' + pa.precipIntensityClass + ')' : '') : 'Нет'}</span></div>
-                    <div class="period-item"><span>Последний дождь</span><span>${getHoursText(pa.hoursSinceRain ?? 0)}</span></div>
+                    <div class="period-item"><span>Последний дождь</span><span>${pa.lastRainText || getHoursText(pa.hoursSinceRain ?? 0)}</span></div>
                     <div class="period-item"><span>Продолжался</span><span>${pa.continuousRainHours ?? 0} ч</span></div>
                 </div>
                 ${minutelyBar ? `

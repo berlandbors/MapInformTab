@@ -35,8 +35,14 @@ export async function getHistoricalPrecipitation(lat, lng) {
             last1h:  +sum(1).toFixed(1),
             last3h:  +sum(3).toFixed(1),
             last6h:  +sum(6).toFixed(1),
-            last24h: +sum(24).toFixed(1)
+            last24h: +sum(24).toFixed(1),
+            hourlyData: hourly
         };
+
+        console.log('📊 Historical precipitation data:', {
+            hourly: data.hourly?.precipitation,
+            last24h: result.last24h
+        });
 
         precipCache.set(key, result);
         return result;
