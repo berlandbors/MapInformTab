@@ -5,23 +5,16 @@ export function showLoading() {
     if (content) {
         content.innerHTML = `
             <div class="loading-container">
-                <div class="retro-loader">
-                    <div class="retro-loader-box">
-                        <div class="retro-loader-top"></div>
-                        <div class="retro-loader-middle">
-                            <span class="loader-dot">█</span>
-                            <span class="loader-dot">█</span>
-                            <span class="loader-dot">█</span>
-                        </div>
-                        <div class="retro-loader-bottom"></div>
-                    </div>
+                <div class="console-spinner">
+                    <div class="spinner-ring"></div>
+                    <div class="spinner-dot"></div>
                 </div>
                 <div class="loading-text">
-                    ▼ ЗАГРУЗКА ДАННЫХ ▼<br><br>
-                    [ СКАНИРОВАНИЕ... ]
-                </div>
-                <div class="retro-progress-bar">
-                    <div class="retro-progress-fill"></div>
+                    &gt;&gt;&gt; ЗАГРУЗКА ДАННЫХ &lt;&lt;&lt;<br><br>
+                    <span class="loading-progress">ПРОГРЕСС: </span>
+                    <span class="loading-bar">
+                        <span class="loading-bar-fill"></span>
+                    </span>
                 </div>
             </div>
         `;
