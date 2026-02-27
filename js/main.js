@@ -257,8 +257,19 @@ async function scanLocation(lat, lng, isRescan = false) {
             metarElevation: weatherData.metarElevation || null,
             vertVisibility: weatherData.vertVisibility || null,
             metarTime: weatherData.metarTime || null,
+            dataSource: weatherData.dataSource || 'open-meteo',
             metarData: metarData  // Сохраняем для отладки
         };
+
+        // Итоговая проверка METAR данных
+        if (fullData.metarStation) {
+            console.log(`📊 fullData содержит METAR от ${fullData.metarStation}`);
+            console.log(`   - Категория полётов: ${fullData.flightCategory || 'N/A'}`);
+            console.log(`   - Порывы ветра: ${fullData.windGust || 'N/A'} м/с`);
+            console.log(`   - Слои облаков: ${fullData.cloudLayers?.length || 0}`);
+        } else {
+            console.log('ℹ️ fullData не содержит METAR (аэропорт недоступен)');
+        }
 
         // Quality assessment
         fullData.quality = calculateDataQuality(fullData);
