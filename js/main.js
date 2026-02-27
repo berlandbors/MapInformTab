@@ -23,7 +23,7 @@ import { collectHazards } from './modules/analysis/hazards.js';
 import { calculateDataQuality } from './modules/analysis/quality.js';
 
 // UI modules
-import { initMap, createMarker, clearMarkers, getCurrentLocation, updateTimestamp, updateAllMarkerTimes } from './modules/ui/map.js';
+import { initMap, createMarker, clearMarkers, getCurrentLocation, updateTimestamp, updateAllMarkerTimes, drawBoundingBox, drawGeoJSON } from './modules/ui/map.js';
 import { showLoading, showError, showToast } from './modules/ui/loading.js';
 import { displayFullInfo, openModal, closeModal, openModalById, showDetailedSurfaceModal, closeSurfaceDetailModal, openPressureDetailModal, closePressureDetailModal } from './modules/ui/modal.js';
 import { initSearch } from './modules/ui/search.js';
@@ -101,7 +101,7 @@ async function scanLocation(lat, lng, isRescan = false) {
         const [locationData, roadData, pedestrianData, seismicData, timezoneData] = await Promise.all([
             getLocationData(lat, lng).catch(err => {
                 console.error('❌ getLocationData не удалось:', err.message);
-                return { road: 'Н/Д', city: 'Н/Д', country: 'Н/Д', district: 'Н/Д', state: 'Н/Д', displayName: 'Н/Д', postcode: null, houseNumber: null, objectType: null, objectName: null };
+                return { road: 'Н/Д', city: 'Н/Д', country: 'Н/Д', district: 'Н/Д', state: 'Н/Д', displayName: 'Н/Д', postcode: null, houseNumber: null, objectType: null, objectName: null, osmType: null, osmId: null, placeId: null, class: null, category: null, importance: 0, boundingBox: null, geojson: null, extraTags: {}, nameDetails: {}, areaSize: null, osmUrl: null, isBuilding: false, isNatural: false, isHighway: false, isAmenity: false };
             }),
             getRoadData(lat, lng).catch(err => {
                 console.error('❌ getRoadData не удалось:', err.message);
@@ -232,6 +232,18 @@ async function scanLocation(lat, lng, isRescan = false) {
         }
 
         createMarker(lat, lng, fullData);
+
+        // НОВОЕ: Визуализация границ объекта
+        if (locationData.boundingBox) {
+            const bbox = drawBoundingBox(locationData);
+            if (bbox) markers.push(bbox);
+        }
+
+        // НОВОЕ: Визуализация GeoJSON полигона
+        if (locationData.geojson) {
+            const geojsonLayer = drawGeoJSON(locationData.geojson);
+            if (geojsonLayer) markers.push(geojsonLayer);
+        }
 
         if (deviceType === 'smartphone-portrait') {
             showToast('✅ Данные загружены!', 1500);

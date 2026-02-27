@@ -3185,3 +3185,190 @@ body {
     margin: 8px 0;
     border-radius: 4px;
 }
+
+/* ========== УЛУЧШЕННЫЙ ПОИСК ========== */
+.search-result-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    cursor: pointer;
+    border-bottom: 1px solid rgba(0, 255, 0, 0.2);
+    transition: all 0.3s ease;
+}
+
+.search-result-item:hover {
+    background: rgba(0, 255, 0, 0.1);
+    border-left: 3px solid #00ff00;
+    padding-left: 9px;
+}
+
+.search-result-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.search-result-content {
+    flex: 1;
+    overflow: hidden;
+}
+
+.search-result-name {
+    color: #00ff00;
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.search-result-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+    color: #00aa00;
+}
+
+.search-result-type {
+    color: #00cccc;
+}
+
+.search-result-importance {
+    color: #ffaa00;
+}
+
+/* ========== ВАЖНОСТЬ МЕСТА ========== */
+.importance-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.importance-badge.very-high {
+    background: rgba(255, 215, 0, 0.2);
+    border: 1px solid #ffd700;
+    color: #ffd700;
+}
+
+.importance-badge.high {
+    background: rgba(255, 165, 0, 0.2);
+    border: 1px solid #ffa500;
+    color: #ffa500;
+}
+
+.importance-badge.medium {
+    background: rgba(0, 255, 255, 0.2);
+    border: 1px solid #00ffff;
+    color: #00ffff;
+}
+
+.importance-badge.low {
+    background: rgba(0, 200, 0, 0.2);
+    border: 1px solid #00aa00;
+    color: #00aa00;
+}
+
+.importance-badge.very-low {
+    background: rgba(128, 128, 128, 0.2);
+    border: 1px solid #888888;
+    color: #888888;
+}
+
+/* ========== OSM ССЫЛКА ========== */
+.osm-link {
+    color: #00ddff;
+    text-decoration: none;
+    border-bottom: 1px dashed #00ddff;
+    transition: all 0.3s ease;
+}
+
+.osm-link:hover {
+    color: #00ffff;
+    border-bottom-color: #00ffff;
+    text-shadow: 0 0 5px rgba(0, 255, 255, 0.5);
+}
+
+/* ========== ДОПОЛНИТЕЛЬНЫЕ ТЕГИ OSM ========== */
+.extra-tags-details {
+    margin-top: 8px;
+}
+
+.extra-tags-details summary {
+    color: #00aaff;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+}
+
+.extra-tags-details summary::-webkit-details-marker {
+    display: none;
+}
+
+.extra-tags-details summary:hover {
+    color: #00ddff;
+}
+
+.extra-tags-details[open] summary {
+    margin-bottom: 10px;
+    color: #00ffff;
+}
+
+.extra-tags-content {
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(0, 255, 0, 0.3);
+    border-radius: 4px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.tag-item {
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    margin: 4px 0;
+    background: rgba(0, 255, 0, 0.05);
+    border-left: 2px solid #00aa00;
+    border-radius: 3px;
+}
+
+.tag-key {
+    color: #00ddff;
+    font-weight: bold;
+    min-width: 120px;
+    font-size: 12px;
+}
+
+.tag-value {
+    color: #00ff00;
+    font-size: 12px;
+    word-break: break-word;
+}
+
+/* ========== ГРАНИЦЫ ОБЪЕКТОВ НА КАРТЕ ========== */
+.leaflet-interactive:hover {
+    stroke-width: 3px;
+    stroke-opacity: 1;
+}
+
+/* Скроллбар для тегов */
+.extra-tags-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.extra-tags-content::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+}
+
+.extra-tags-content::-webkit-scrollbar-thumb {
+    background: rgba(0, 255, 0, 0.3);
+    border-radius: 4px;
+}
+
+.extra-tags-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 255, 0, 0.5);
+}

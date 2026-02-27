@@ -56,7 +56,11 @@ export function clearMarkers() {
     const m = map;
     if (m) {
         markers.forEach(function(item) {
-            m.removeLayer(item.marker);
+            if (item && item.marker) {
+                m.removeLayer(item.marker);
+            } else if (item instanceof L.Layer) {
+                m.removeLayer(item);
+            }
         });
     }
     markers.length = 0;
@@ -106,7 +110,8 @@ export function updateTimestamp() {
 }
 
 export function updateVisibleTimeDisplay() {
-    const lastMarkerData = markers.length > 0 ? markers[markers.length - 1].data : null;
+    const lastMarkerItem = markers.slice().reverse().find(item => item && item.data);
+    const lastMarkerData = lastMarkerItem ? lastMarkerItem.data : null;
 
     if (lastMarkerData && lastMarkerData.timezone) {
         const currentTime = getCurrentTimeForTimezone(lastMarkerData.timezone);
@@ -165,6 +170,7 @@ export function updateVisibleTimeDisplay() {
 export function updateAllMarkerTimes() {
     if (markers.length === 0) return;
     markers.forEach(item => {
+        if (!item || !item.data) return;
         const tz = item.data.timezone;
         if (tz && tz !== 'Н/Д') {
             item.data.localTime = getCurrentTimeForTimezone(tz);
@@ -172,4 +178,37 @@ export function updateAllMarkerTimes() {
     });
     const infoContent = document.getElementById('infoContent');
     if (infoContent) updateVisibleTimeDisplay();
+}
+
+// НОВОЕ: Визуализация границ объекта (если есть boundingBox)
+export function drawBoundingBox(locationData) {
+    if (!locationData.boundingBox) return null;
+
+    const { south, north, west, east } = locationData.boundingBox;
+    const bounds = [[south, west], [north, east]];
+
+    const rectangle = L.rectangle(bounds, {
+        color: '#00ff00',
+        weight: 2,
+        fillOpacity: 0.1,
+        fillColor: '#00ff00'
+    }).addTo(map);
+
+    return rectangle;
+}
+
+// НОВОЕ: Рисование GeoJSON полигона
+export function drawGeoJSON(geojson) {
+    if (!geojson) return null;
+
+    const layer = L.geoJSON(geojson, {
+        style: {
+            color: '#00ffff',
+            weight: 2,
+            fillOpacity: 0.2,
+            fillColor: '#00ffff'
+        }
+    }).addTo(map);
+
+    return layer;
 }
