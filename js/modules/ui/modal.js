@@ -102,6 +102,15 @@ function renderSurfaceCondition(condition) {
 }
 
 export function openModal(data) {
+    // Отладочная информация
+    console.log('🔍 Открытие модального окна. METAR данные:', {
+        metarStation: data.metarStation || 'НЕТ',
+        flightCategory: data.flightCategory || 'НЕТ',
+        windGust: data.windGust || 'НЕТ',
+        cloudLayers: data.cloudLayers?.length || 0,
+        weatherDecoded: data.weatherDecoded || 'НЕТ'
+    });
+
     const overlay = document.getElementById('modalOverlay');
     const title = document.getElementById('modalTitle');
     const subtitle = document.getElementById('modalSubtitle');
@@ -961,9 +970,18 @@ export function closeModal(event) {
     }
 }
 
-export function openModalById(index) {
-    if (markers[index]) {
-        openModal(markers[index].data);
+export function openModalById(markerId) {
+    console.log(`🔍 Поиск маркера с id=${markerId}, всего маркеров: ${markers.length}`);
+
+    // Поиск маркера по data.id, а не по индексу массива
+    const marker = markers.find(m => m.data && m.data.id === markerId);
+
+    if (marker && marker.data) {
+        console.log(`✅ Маркер найден, открываем модальное окно`);
+        openModal(marker.data);
+    } else {
+        console.error(`❌ Маркер с id=${markerId} не найден. Доступные маркеры:`,
+            markers.map(m => m.data?.id).filter(Boolean));
     }
 }
 
