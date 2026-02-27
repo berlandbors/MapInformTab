@@ -1,23 +1,69 @@
 // js/modules/ui/loading.js - Loading indicator and status messages
 
+let loadingSteps = {
+    total: 8,
+    current: 0,
+    steps: [
+        'Получение погодных данных',
+        'Загрузка METAR данных',
+        'Получение геоданных и дорог',
+        'ML-коррекции данных',
+        'Загрузка исторических данных',
+        'Анализ состояния поверхности',
+        'Расчёт трафика',
+        'Финализация'
+    ]
+};
+
 export function showLoading() {
+    loadingSteps.current = 0;
     const content = document.getElementById('infoContent');
-    if (content) {
-        content.innerHTML = `
-            <div class="loading-container">
-                <div class="console-spinner">
-                    <div class="spinner-ring"></div>
-                    <div class="spinner-dot"></div>
+    if (!content) return;
+
+    content.innerHTML = `
+        <div class="loading-container">
+            <div class="loading-text">[ ИНИЦИАЛИЗАЦИЯ СКАНИРОВАНИЯ ]</div>
+            <div class="loading-bar-container">
+                <div class="loading-bar" id="loadingBar">
+                    <div class="loading-bar-fill" id="loadingBarFill" style="width: 0%"></div>
                 </div>
-                <div class="loading-text">
-                    &gt;&gt;&gt; ЗАГРУЗКА ДАННЫХ &lt;&lt;&lt;<br><br>
-                    <span class="loading-progress">ПРОГРЕСС: </span>
-                    <span class="loading-bar">
-                        <span class="loading-bar-fill"></span>
-                    </span>
-                </div>
+                <div class="loading-percentage" id="loadingPercentage">0%</div>
             </div>
-        `;
+            <div class="loading-step" id="loadingStep">Подготовка...</div>
+            <div class="loading-spinner" id="loadingSpinner">⠋</div>
+        </div>
+    `;
+
+    // Анимация спиннера
+    let spinnerIndex = 0;
+    const spinnerChars = '⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏';
+
+    window.spinnerInterval = setInterval(() => {
+        spinnerIndex = (spinnerIndex + 1) % spinnerChars.length;
+        const spinner = document.getElementById('loadingSpinner');
+        if (spinner) spinner.textContent = spinnerChars[spinnerIndex];
+    }, 80);
+}
+
+export function updateLoadingProgress(step) {
+    loadingSteps.current = Math.min(step, loadingSteps.total);
+    const percentage = Math.round((loadingSteps.current / loadingSteps.total) * 100);
+
+    const barFill = document.getElementById('loadingBarFill');
+    const percentageEl = document.getElementById('loadingPercentage');
+    const stepEl = document.getElementById('loadingStep');
+
+    if (barFill) barFill.style.width = `${percentage}%`;
+    if (percentageEl) percentageEl.textContent = `${percentage}%`;
+    if (stepEl && loadingSteps.steps[step - 1]) {
+        stepEl.textContent = `▶ ${loadingSteps.steps[step - 1]}...`;
+    }
+}
+
+export function hideLoading() {
+    if (window.spinnerInterval) {
+        clearInterval(window.spinnerInterval);
+        window.spinnerInterval = null;
     }
 }
 

@@ -24,7 +24,7 @@ import { calculateDataQuality } from './modules/analysis/quality.js';
 
 // UI modules
 import { initMap, createMarker, clearMarkers, getCurrentLocation, updateTimestamp, updateAllMarkerTimes, drawBoundingBox, drawGeoJSON } from './modules/ui/map.js';
-import { showLoading, showError, showToast } from './modules/ui/loading.js';
+import { showLoading, hideLoading, showError, showToast, updateLoadingProgress } from './modules/ui/loading.js';
 import { displayFullInfo, openModal, closeModal, openModalById, showDetailedSurfaceModal, closeSurfaceDetailModal, openPressureDetailModal, closePressureDetailModal } from './modules/ui/modal.js';
 import { initSearch } from './modules/ui/search.js';
 import { initLayers, updateLayersForLocation, toggleLayer, focusOnLayer } from './modules/ui/layers.js';
@@ -109,6 +109,7 @@ async function scanLocation(lat, lng, isRescan = false) {
 
     try {
         // 1. Multi-point weather data (Open-Meteo as base)
+        updateLoadingProgress(1);
         let weatherData = await getWeatherDataMultiPoint(lat, lng);
 
         // Format hourly and daily forecasts from weather data
@@ -116,10 +117,19 @@ async function scanLocation(lat, lng, isRescan = false) {
         const dailyForecast = formatDailyForecast(weatherData.daily);
 
         // 2. METAR data
+        updateLoadingProgress(2);
         const metarData = await getMETARData(lat, lng);
         weatherData = mergeWeatherData(weatherData, metarData);
 
+        // Отладка METAR данных
+        if (weatherData.metarStation) {
+            console.log(`✈️ METAR данные получены от ${weatherData.metarStation} (${weatherData.metarDistance} км)`);
+        } else {
+            console.log('⚠️ METAR данные недоступны (аэропорт >100 км или ошибка API)');
+        }
+
         // 3. Other data sources in parallel
+        updateLoadingProgress(3);
         const [locationData, roadData, pedestrianData, seismicData, timezoneData] = await Promise.all([
             getLocationData(lat, lng).catch(err => {
                 console.error('❌ getLocationData не удалось:', err.message);
@@ -144,6 +154,7 @@ async function scanLocation(lat, lng, isRescan = false) {
         ]);
 
         // 5. ML corrections
+        updateLoadingProgress(4);
         weatherData = applyMLCorrections(weatherData, locationData, timezoneData);
 
         // 6. Confidence levels
@@ -153,6 +164,7 @@ async function scanLocation(lat, lng, isRescan = false) {
         saveWeatherHistory(weatherData);
 
         // 8. Real-data enrichment (parallel, with graceful degradation)
+        updateLoadingProgress(5);
         const [historicalPrecip, historicalWetness, elevationData, shadingRaw, hasRoof, airQualityData] = await Promise.all([
             getHistoricalPrecipitation(lat, lng).catch(() => null),
             getHistoricalWetness(lat, lng).catch(() => null),
@@ -183,6 +195,7 @@ async function scanLocation(lat, lng, isRescan = false) {
         };
 
         // 9. Surface analysis
+        updateLoadingProgress(6);
         const surfaceAnalysis = analyzeSurfaceWithProbability(
             weatherData,
             roadData,
@@ -204,12 +217,14 @@ async function scanLocation(lat, lng, isRescan = false) {
         const surfaceCondition = buildSurfaceCondition(weatherData, roadData, surfaceAnalysis);
 
         // 10. Traffic analysis
+        updateLoadingProgress(7);
         const trafficAnalysis = estimateTrafficWithInduction(roadData, weatherData, locationData, new Date(), null);
 
         const astronomyData = getAstronomyData(lat, lng, weatherData.timezone);
         const alertsData = getLocalWeatherAlerts(weatherData.weatherCode, weatherData.precipProbability);
 
         const currentMarkerCount = markerCount;
+        updateLoadingProgress(8);
 
         const fullData = {
             ...weatherData,
@@ -221,7 +236,6 @@ async function scanLocation(lat, lng, isRescan = false) {
             ...alertsData,
             ...timezoneData,
             confidence,
-            metarData,
             surfaceAnalysis,
             surfaceCondition,
             trafficAnalysis,
@@ -230,7 +244,20 @@ async function scanLocation(lat, lng, isRescan = false) {
             dailyForecast,
             airQualityData,
             id: currentMarkerCount,
-            scanTime: new Date().toLocaleString('ru-RU')
+            scanTime: new Date().toLocaleString('ru-RU'),
+
+            // Явно сохраняем METAR поля (должны быть в weatherData после mergeWeatherData)
+            metarStation: weatherData.metarStation || null,
+            metarDistance: weatherData.metarDistance || null,
+            flightCategory: weatherData.flightCategory || null,
+            windGust: weatherData.windGust || null,
+            weatherDecoded: weatherData.weatherDecoded || null,
+            cloudLayers: weatherData.cloudLayers || [],
+            metarRaw: weatherData.metarRaw || null,
+            metarElevation: weatherData.metarElevation || null,
+            vertVisibility: weatherData.vertVisibility || null,
+            metarTime: weatherData.metarTime || null,
+            metarData: metarData  // Сохраняем для отладки
         };
 
         // Quality assessment
@@ -272,6 +299,7 @@ async function scanLocation(lat, lng, isRescan = false) {
         }
 
         displayFullInfo(fullData);
+        hideLoading();
         updateLayersForLocation(lat, lng, fullData);
 
         const shareBtn = document.getElementById('shareBtn');
@@ -283,6 +311,7 @@ async function scanLocation(lat, lng, isRescan = false) {
 
     } catch (error) {
         console.error('Ошибка сканирования:', error);
+        hideLoading();
         showError(`Ошибка загрузки данных: ${error.message || 'Попробуйте другую точку.'}`);
 
         if (deviceType === 'smartphone-portrait') {
